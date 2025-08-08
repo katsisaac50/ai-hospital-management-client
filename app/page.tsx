@@ -25,7 +25,7 @@ import {
   User,
 } from "lucide-react"
 import Link from "next/link"
-import { useAuth, canAccessModule } from "@/lib/auth"
+import {useAuth} from "@/lib/auth"
 import { AuthBoundary } from '@/components/auth-boundary'
 import { LoginForm } from "@/components/login-form"
 import { UserProfile } from "@/components/user-profile"
