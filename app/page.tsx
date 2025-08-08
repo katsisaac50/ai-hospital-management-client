@@ -25,7 +25,7 @@ import {
   User,
 } from "lucide-react"
 import Link from "next/link"
-import {useAuth} from "@/lib/auth"
+import {useAuth, canAccessModule} from "@/lib/auth"
 import { AuthBoundary } from '@/components/auth-boundary'
 import { LoginForm } from "@/components/login-form"
 import { UserProfile } from "@/components/user-profile"
@@ -149,7 +149,9 @@ const getICUColor = (percent: number) => {
     },
   ]
 
-  const accessibleModules = modules.filter((module) => canAccessModule(user, module.module))
+  const accessibleModules = user
+    ? modules.filter((module) => canAccessModule(user, module.module))
+    : [];
 
   const containerClasses = cn("min-h-screen transition-all duration-300", {
     "bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 text-white": theme === "dark",
