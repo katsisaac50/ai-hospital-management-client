@@ -12,7 +12,7 @@ import ReorderModal from "@/components/reorder-modal"
 import DeleteConfirmationModal from "@/components/delete-confirmation-modal"
 import { toast } from "react-toastify"
 
-const API_URL = process.env.API_BASE_URL || 'http://localhost:5000/api'
+const API_URL = process.env.NEXT_PUBLIC_API_BASE_URL;
 
 export function MedicationInventory() {
   const [searchTerm, setSearchTerm] = useState("")

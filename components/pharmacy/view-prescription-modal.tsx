@@ -12,7 +12,7 @@ import { useState } from "react"
 import { toast } from "react-toastify"
 import { authFetch } from "@/lib/api"
 
-const API_URL = process.env.API_BASE_URL || 'http://localhost:5000/api'
+const API_URL = process.env.NEXT_PUBLIC_API_BASE_URL;
 
 export function ViewPrescriptionModal({ prescription, onClose, onUpdated, medicationMap }) {
   const [loading, setLoading] = useState(false)

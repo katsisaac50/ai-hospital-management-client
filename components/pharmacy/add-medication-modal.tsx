@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button'
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select'
 import toast from 'react-hot-toast';
 import { authFetch } from "@/lib/api"
-const API_URL = process.env.API_BASE_URL || 'http://localhost:5000/api'
+const API_URL = process.env.NEXT_PUBLIC_API_BASE_URL;
 
 
 export default function AddMedicationModal({ open, onClose }) {

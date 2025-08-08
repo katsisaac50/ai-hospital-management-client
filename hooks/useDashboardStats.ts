@@ -6,7 +6,7 @@ import useSWR from 'swr'
 import axios from "axios"
 
 const fetcher = (url: string) => axios.get(url).then((res) => res.data)
-const API_URL = process.env.API_BASE_URL || 'http://localhost:5000/api'
+const API_URL = process.env.NEXT_PUBLIC_API_BASE_URL;
 
 export const useDashboardStats = () => {
   const { data, isLoading } = useSWR(`${API_URL}/dashboard-stats`, fetcher)

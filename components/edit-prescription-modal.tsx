@@ -21,7 +21,7 @@ import {
 } from "@/components/ui/select"
 import { toast } from "react-toastify"
 import { authFetch } from "@/lib/api"
-const API_URL = process.env.API_BASE_URL || 'http://localhost:5000/api'
+const API_URL = process.env.NEXT_PUBLIC_API_BASE_URL;
 
 export default function EditPrescriptionModal({ open, onClose, prescription, onUpdated }) {
   const [form, setForm] = useState(null)
@@ -276,7 +276,7 @@ const removeMedication = (index) => {
 
 // export default function editPrescriptionModal({ open, onClose, prescription, onUpdated }) {
 //   const [form, setForm] = useState(null)
-//   const API_URL = process.env.API_BASE_URL || 'http://localhost:5000/api'
+//   const API_URL = process.env.NEXT_PUBLIC_API_BASE_URL;
 
 //   useEffect(() => {
 //     if (prescription) {

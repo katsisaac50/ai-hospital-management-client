@@ -13,7 +13,7 @@ interface AuthProviderProps {
 export function AuthProvider({ children }: AuthProviderProps) {
   const [user, setUser] = useState<User | null>(null)
   const [loading, setLoading] = useState(true)
-  const API_URL = process.env.API_BASE_URL || 'http://localhost:5000/api'
+  const API_URL = process.env.NEXT_PUBLIC_API_BASE_URL;
   const router = useRouter();
 
   useEffect(() => {

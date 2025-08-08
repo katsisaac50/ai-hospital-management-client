@@ -47,8 +47,8 @@ import {
 } from "recharts";
 import { StatCard } from "@/components/dashboard/StatCard";
 
-const API_URL = process.env.API_BASE_URL || 'http://localhost:5000/api';
-
+const API_URL = process.env.NEXT_PUBLIC_API_BASE_URL;
+ 
 interface Stats {
   totalPatients: number;
   today: { count: number; prev: number };
@@ -70,6 +70,7 @@ export default function Dashboard() {
   const token = localStorage.getItem("token");
 
   const { total, growth, trend } = stats?.monthlyRevenue || {}
+  console.log('API_URL', API_URL)
 console.log('user dashboard', user)
   // Show login form if user is not authenticated
 

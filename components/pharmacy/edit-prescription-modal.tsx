@@ -12,7 +12,7 @@ import { authFetch } from "@/lib/api"
 
 export default function editPrescriptionModal({ open, onClose, prescription, onUpdated, medicationMap }) {
   const [form, setForm] = useState(null)
-  const API_URL = process.env.API_BASE_URL || 'http://localhost:5000/api'
+  const API_URL = process.env.NEXT_PUBLIC_API_BASE_URL;
 
   useEffect(() => {
     if (prescription) {

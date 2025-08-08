@@ -3,7 +3,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { authFetch } from "@/lib/api"
 import toast from 'react-hot-toast';
-const API_URL = process.env.API_BASE_URL || 'http://localhost:5000/api'
+const API_URL = process.env.NEXT_PUBLIC_API_BASE_URL;
 
 const daysOfWeek = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
 const departments = ['emergency', 'cardiology', 'neurology', 'pediatrics'];

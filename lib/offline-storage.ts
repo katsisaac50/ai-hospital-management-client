@@ -167,3 +167,30 @@
 // }
 
 // export const offlineStorage = new OfflineStorage()
+
+
+
+// (your existing code here)
+
+// Add this at the end if not already present
+export const offlineStorage = {
+  // ...implement your offline storage methods here
+  // Example:
+  async put(storeName: string, record: any) { /* ... */ },
+  async get(storeName: string, id: string) { /* ... */ },
+  async delete(storeName: string, id: string) { /* ... */ },
+  async getAll<T>(storeName: string): Promise<T[]> { /* ... */ },
+  async addPendingChange(operation: string, storeName: string, data: any) { /* ... */ },
+  async getPendingChanges() { /* ... */ },
+  async markChangeAsSynced(id: string) { /* ... */ },
+  async clear(storeName: string) { /* ... */ },
+  async getByIndex<T>(storeName: string, indexName: string, value: any): Promise<T[]> {
+    // Implement your logic here
+    console.error("getByIndex not implemented")
+    return []
+  },
+  async init() {
+    // Initialize your storage if needed
+    console.log("Offline storage initialized")
+  }
+  }
