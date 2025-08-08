@@ -10,11 +10,14 @@ import { PharmacyStats } from "@/components/pharmacy-stats"
 import { MedicationInventory } from "@/components/medication-inventory"
 import { PrescriptionManager } from "@/components/prescription-manager"
 import { DrugInteractionChecker } from "@/components/drug-interaction-checker"
-import AddMedicationModal from "@/components/pharmacy/add-medication-modal"
+import MedicationModal from "@/components/medication-modal"
 import ProcessPrescriptionModal from "@/components/pharmacy/process-prescription-modal"
 import CreateStockOrderModal from "@/components/pharmacy/CreateStockOrderModal"
 import DrugInteractionModal from "@/components/pharmacy/drug-interaction-modal"
 import { authFetch } from "@/lib/api"
+import { toast } from "sonner"
+
+const API_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:5000/api'
 
 
 export default function PharmacyPage() {
@@ -185,6 +188,27 @@ function PharmacyOverview() {
   const [showStockOrderModal, setShowStockOrderModal] = useState(false);
   const [loading, setLoading] = useState(false);
 
+  const handleSave = async (data) => {
+    try {
+      const res = await authFetch(`${API_URL}/v1/pharmacy/medications`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(data),
+          })
+ 
+      const updated = await res.json()
+      if (!updated.success) {
+        toast(updated.error || "Failed to save medication")
+        return
+      }
+      toast(`${updated.data.name} saved successfully`)
+      setModalOpen(false)
+    } catch (err) {
+      toast(`An error occurred while saving medication: ${err}`)
+      console.error("Save Error:", err)
+    }
+  }
+
   return (
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
       {/* Recent Activities */}
@@ -236,8 +260,14 @@ function PharmacyOverview() {
           <DrugInteractionModal open={modalOpen} onClose={() => setOpenModal(false)} />
         </CardContent>
       </Card>
+      
       {/* Add Medication Modal */}
-      {isModalOpen && <AddMedicationModal open={isModalOpen} onClose={closeModal} />}
+      {isModalOpen &&<MedicationModal
+  isOpen={isModalOpen}
+  onClose={closeModal}
+  onSave={handleSave}
+  // initialData={editingMed}
+/>}
 {openPrescriptionModal && <ProcessPrescriptionModal open={openPrescriptionModal} onClose={() => setOpenPrescriptionModal(false)} />}
   {showStockOrderModal && <CreateStockOrderModal open={showStockOrderModal} onClose={() => setShowStockOrderModal(false)} />}
     </div>

@@ -15,8 +15,8 @@ export default function AddMedicationModal({ open, onClose }) {
     unit: 'mg',
     dosageForm: 'tablet',
     category: 'other',
-    quantity: 0,
-    price: 0,
+    quantity: '',
+    price: '',
     expiryDate: '',
   })
   const modalRef = useRef(null);

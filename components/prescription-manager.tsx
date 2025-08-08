@@ -28,7 +28,7 @@ import EditPrescriptionModal from './edit-prescription-modal'
 import {ViewPrescriptionModal} from '@/components/pharmacy/view-prescription-modal'
 import ProcessPrescriptionModal from "@/components/pharmacy/process-prescription-modal"
 import { toast } from "react-toastify"
-const API_URL = process.env.NEXT_PUBLIC_API_BASE_URL;
+const API_URL = process.env.API_BASE_URL || 'http://localhost:5000/api'
 
 export function PrescriptionManager({ userRole = 'admin' }) {
   const [searchTerm, setSearchTerm] = useState("");
