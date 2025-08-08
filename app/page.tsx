@@ -26,6 +26,7 @@ import {
 } from "lucide-react"
 import Link from "next/link"
 import { useAuth, canAccessModule } from "@/lib/auth"
+import { AuthBoundary } from '@/components/auth-boundary'
 import { LoginForm } from "@/components/login-form"
 import { UserProfile } from "@/components/user-profile"
 import { RoleBasedAccess } from "@/components/role-based-access"
@@ -46,6 +47,8 @@ import {
 } from "recharts";
 import { StatCard } from "@/components/dashboard/StatCard";
 
+const API_URL = process.env.API_BASE_URL || 'http://localhost:5000/api';
+
 interface Stats {
   totalPatients: number;
   today: { count: number; prev: number };
@@ -61,15 +64,14 @@ export default function Dashboard() {
   const [stats, setStats] = useState<Stats | null>(null);
   const [showSimpleStats, setShowSimpleStats] = useState(true);
   const [loading, setLoading] = useState(true);
-  const API_URL = process.env.API_BASE_URL || 'http://localhost:5000/api';
+  const [error, setError] = useState(false);
   const maxEmergencies = 10;
+  const profileRef = useRef<HTMLDivElement>(null)
+  const token = localStorage.getItem("token");
 
   const { total, growth, trend } = stats?.monthlyRevenue || {}
-
+console.log('user dashboard', user)
   // Show login form if user is not authenticated
-  if (!user) {
-    return <LoginForm />
-  }
 
   const renderTrendIcon = () => {
   if (trend === 'up') return <TrendingUp className="w-4 h-4 text-green-400" />
@@ -161,7 +163,11 @@ const getICUColor = (percent: number) => {
     "bg-white border-gray-200 hover:border-blue-500/50 shadow-sm": theme === "light",
   })
 
-  const profileRef = useRef<HTMLDivElement>(null)
+   const renderChange = (current: number, previous: number) => {
+    if (current > previous) return <span style={{ color: 'green' }}>↑ Increased</span>;
+    if (current < previous) return <span style={{ color: 'red' }}>↓ Decreased</span>;
+    return <span style={{ color: 'gray' }}>→ No change</span>;
+  };
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
@@ -177,29 +183,72 @@ const getICUColor = (percent: number) => {
     return () => document.removeEventListener("mousedown", handleClickOutside)
   }, [showProfile])
 
-  useEffect(() => {
-    const fetchStats = async () => {
-    console.log("apit", API_URL)
+const fetchStats = async () => {
+  console.log('fetching')
+  try {
     const res = await authFetch(`${API_URL}/v1/patients/stats`);
     console.log('res', res)
     const data = await res.json();
-    
     setStats(data || []);
-        setLoading(false);
+    setError(false);
+  } catch (err) {
+    console.log('l erroring')
+    console.error("Error fetching stats:", err);
+    // setError(true);
+  } finally {
+    setLoading(false);
   }
-  fetchStats()
-  }, []);
+};
 
-  if (loading) return <div>Loading stats...</div>;
-  if (!stats) return <div>Failed to load stats</div>;
+useEffect(() => {
+  if (token) {
+    fetchStats();
+  }
+}, [token]);
 
-  const renderChange = (current: number, previous: number) => {
-    if (current > previous) return <span style={{ color: 'green' }}>↑ Increased</span>;
-    if (current < previous) return <span style={{ color: 'red' }}>↓ Decreased</span>;
-    return <span style={{ color: 'gray' }}>→ No change</span>;
-  };
+  console.log('todken dash', token)
+
+  if (!token) {
+    return <LoginForm />
+  }
+
+  // Improved loading and error states
+if (loading) {
+  return (
+    <div className="flex items-center justify-center h-64">
+      <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-cyan-500"></div>
+      <span className="ml-4 text-slate-400">Loading dashboard data...</span>
+    </div>
+  );
+}
+
+if (error) {
+  return (
+    <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-4 text-red-500">
+      <AlertTriangle className="inline mr-2" />
+      Failed to load dashboard data. Please try again later.
+      <Button 
+        variant="outline" 
+        onClick={fetchStats}
+        className="ml-4"
+      >
+        Retry
+      </Button>
+    </div>
+  );
+}
+
+if (!stats) {
+  return (
+    <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-lg p-4 text-yellow-500">
+      <AlertTriangle className="inline mr-2" />
+      No data available
+    </div>
+  );
+}
 
   return (
+    <AuthBoundary>
     <div className={containerClasses}>
       <div className="container mx-auto px-6 py-8">
         {/* Header with User Info */}
@@ -522,9 +571,9 @@ const getICUColor = (percent: number) => {
                     >
                       ICU Occupancy
                     </span>
-                    <span className="text-blue-400">{stats?.occupiedICUBeds.occupied/stats?.occupiedICUBeds.total} beds</span>
+                    <span className="text-blue-400">{stats?.occupiedICUBeds?.occupied/stats?.occupiedICUBeds?.total} beds</span>
                   </div>
-                  <ProgressBar value={stats?.occupiedICUBeds.occupied} className={`h-2`} />
+                  <ProgressBar value={stats?.occupiedICUBeds?.occupied} className={`h-2`} />
                 </div>
                 <div className="space-y-2">
                   <div className="flex items-center justify-between">
@@ -634,5 +683,6 @@ const getICUColor = (percent: number) => {
         )}
       </div>
     </div>
+    </AuthBoundary>
   )
 }

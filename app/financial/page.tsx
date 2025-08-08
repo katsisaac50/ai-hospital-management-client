@@ -13,18 +13,10 @@ import { FinancialReports } from "@/components/finance/financial-reports"
 import { FinancialOverview } from "@/components/finance/financial-overview"
 
 import {
-  DollarSign,
   CreditCard,
   FileText,
   TrendingUp,
   Receipt,
-  AlertCircle,
-  CheckCircle,
-  Clock,
-  Search,
-  Plus,
-  Filter,
-  Calendar,
 } from "lucide-react"
 import Link from "next/link"
 import { FinancialStats } from "@/components/financial-stats"

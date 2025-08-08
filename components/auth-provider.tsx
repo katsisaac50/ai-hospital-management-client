@@ -4,6 +4,7 @@ import { useState, useEffect, type ReactNode } from "react"
 import { AuthContext, type User, type UserRole, getCurrentUser, setCurrentUser, ROLE_PERMISSIONS } from "@/lib/auth"
 import { toast } from "@/hooks/use-toast"
 import { useRouter } from 'next/navigation';
+import { authFetch } from "@/lib/api"
 
 interface AuthProviderProps {
   children: ReactNode
@@ -15,47 +16,49 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const API_URL = process.env.API_BASE_URL || 'http://localhost:5000/api'
   const router = useRouter();
 
-//   useEffect(() => {
-//   const token = localStorage.getItem("token")
-//   if (!token) {
-//     setLoading(false)
-//     return
-//   }
+  useEffect(() => {
+  const token = localStorage.getItem("token")
+  if (!token) {
+    setLoading(false)
+    return
+  }
 
-//   const fetchUser = async () => {
-//     try {
-//       const res = await fetch("http://localhost:5000/api/v1/auth/me", {
-//         headers: {
-//           Authorization: `Bearer ${token}`,
-//         },
-//       })
-//       const user = await res.json()
+  const fetchUser = async () => {
+    try {
+      const res = await fetch("http://localhost:5000/api/v1/auth/me", {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      })
+      const user = await res.json()
 
-//       const currentUser: User = {
-//         id: user._id,
-//         email: user.email,
-//         name: user.name,
-//         role: user.role,
-//         department: user.department,
-//         avatar: user.avatar,
-//         isActive: true,
-//         lastLogin: new Date().toISOString(),
-//         permissions: ROLE_PERMISSIONS[user.role],
-//         createdAt: user.createdAt,
-//         updatedAt: user.updatedAt,
-//       }
+      const currentUser: User = {
+        id: user._id,
+        email: user.email,
+        name: user.name,
+        role: user.role,
+        department: user.department,
+        avatar: user.avatar,
+        isActive: true,
+        lastLogin: new Date().toISOString(),
+        permissions: ROLE_PERMISSIONS[user.role],
+        createdAt: user.createdAt,
+        updatedAt: user.updatedAt,
+      }
 
-//       setUser(currentUser)
-//       setCurrentUser(currentUser)
-//     } catch {
-//       localStorage.removeItem("token")
-//     } finally {
-//       setLoading(false)
-//     }
-//   }
+      console.log('jdjds', user)
 
-//   fetchUser()
-// }, [])
+      // setUser(currentUser)
+      // setCurrentUser(currentUser)
+    } catch {
+      localStorage.removeItem("token")
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  fetchUser()
+}, [])
 
 
   useEffect(() => {
@@ -67,6 +70,36 @@ export function AuthProvider({ children }: AuthProviderProps) {
   }
     setLoading(false)
   }, [])
+
+  // Initialize auth state
+  // useEffect(() => {
+  //   const initializeAuth = async () => {
+  //     try {
+  //       const token = localStorage.getItem("token")
+  //       console.log('token', token)
+  //       if (!token) {
+  //         setLoading(false)
+  //         return
+  //       }
+
+  //       const res = await authFetch(`${API_URL}/v1/auth/me`)
+  //       if (res.ok) {
+  //         const userData = await res.json()
+
+  //         console.log("User data from auth/me:", userData)
+  //         setUser(userData)
+  //       } else {
+  //         localStorage.removeItem("token")
+  //       }
+  //     } catch (error) {
+  //       console.error("Auth initialization error:", error)
+  //     } finally {
+  //       setLoading(false)
+  //     }
+  //   }
+
+  //   initializeAuth()
+  // }, [])
 
     const register = async (
   name: string,
@@ -153,6 +186,8 @@ export function AuthProvider({ children }: AuthProviderProps) {
     const result = await res.json();
     const { token, data: userData } = result;
 
+    console.log('tole', token)
+
     // Save token
     localStorage.setItem("token", token);
     localStorage.setItem("currentUser", JSON.stringify(userData));
@@ -197,6 +232,18 @@ export function AuthProvider({ children }: AuthProviderProps) {
     
   // router.push("/login");
 
+  }
+
+  const refreshUser = async () => {
+    try {
+      const res = await authFetch(`${API_URL}/v1/auth/me`)
+      if (res.ok) {
+        const userData = await res.json()
+        setUser(userData)
+      }
+    } catch (error) {
+      console.error("Failed to refresh user:", error)
+    }
   }
 
   const switchRole = (role: UserRole) => {

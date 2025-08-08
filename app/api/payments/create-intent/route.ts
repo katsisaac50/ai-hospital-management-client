@@ -1,3 +1,6 @@
+export const dynamic = "force-dynamic"; // ensure it's not prerendered
+
+
 import { type NextRequest, NextResponse } from "next/server"
 import Stripe from "stripe"
 

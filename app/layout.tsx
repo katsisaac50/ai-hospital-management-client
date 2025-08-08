@@ -12,7 +12,7 @@ import { ThemeProvider } from "@/components/theme-provider"
 const inter = Inter({ subsets: ["latin"] })
 
 export const metadata: Metadata = {
-  title: "MedFlow - Hospital Management System",
+  title: "BismillahMedicalCenter - Hospital Management System",
   description: "AI-Powered Hospital Management Application with Role-Based Access Control",
     generator: 'v0.dev'
 }

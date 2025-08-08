@@ -164,9 +164,9 @@ export default function PatientsPage() {
 
   useEffect(() => {
   const fetchPatients = async () => {
-    console.log("apit", API_URL)
+    // console.log("apit", API_URL)
     const res = await authFetch(`${API_URL}/v1/patients`);
-    console.log('res', res)
+    // console.log('res', res)
     const json = await res.json();
     const data = json?.data || [];
 
