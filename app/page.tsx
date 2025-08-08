@@ -260,7 +260,7 @@ if (!stats) {
             <div className="flex items-center gap-3 mb-2">
               <Stethoscope className="w-8 h-8 text-cyan-400" />
               <h1 className="text-4xl font-bold bg-gradient-to-r from-cyan-400 to-purple-400 bg-clip-text text-transparent">
-                MedFlow
+                BismillahMedicalCenter
               </h1>
               <Badge className="bg-gradient-to-r from-cyan-500/20 to-purple-500/20 border border-cyan-500/30 text-cyan-300">
                 <Brain className="w-3 h-3 mr-1" />
