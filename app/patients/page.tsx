@@ -30,11 +30,14 @@ import {
   Heart,
   AlertTriangle,
   User,
+  ArrowLeft, 
+  Menu,
+  Users,
 } from "lucide-react"
 import { toast } from "@/hooks/use-toast"
 // import { toast } from "react-toastify";
-import { Users } from "lucide-react" // Import Users component
 import EditPatientDialog from "@/components/patients/editPatientForm"
+import Link from "next/link"
 
 interface PatientType {
   id: string
@@ -439,27 +442,62 @@ console.log('sd', updatedPatients)
       })}
     >
       <div className="container mx-auto px-6 py-8">
-        {/* Header */}
-        <div className="flex items-center justify-between mb-8">
-          <div>
-            <h1 className={cn("text-3xl font-bold", textClasses)}>Patient Management</h1>
-            <p className={mutedTextClasses}>Manage patient records and information</p>
-          </div>
-          <div className="flex items-center gap-4">
-            <RoleBasedAccess requiredPermission="edit_patients" showError={false}>
-              <Button
-                onClick={() => setIsAddDialogOpen(true)}
-                className={cn("transition-all duration-300", {
-                  "bg-gradient-to-r from-cyan-500 to-blue-500 hover:opacity-90": theme === "dark" || theme === "morpho",
-                  "bg-gradient-to-r from-blue-500 to-purple-500 hover:opacity-90": theme === "light",
-                })}
-              >
-                <Plus className="w-4 h-4 mr-2" />
-                Add Patient
-              </Button>
-            </RoleBasedAccess>
-          </div>
-        </div>
+        {/* Header Section */}
+<header className="flex flex-col gap-4 mb-8 md:flex-row md:items-center md:justify-between">
+  {/* Title Section */}
+  <div className="space-y-1">
+    <h1 className={cn(
+      "text-2xl font-bold tracking-tight sm:text-3xl",
+      textClasses
+    )}>
+      Patient Management
+    </h1>
+    <p className={cn(
+      "text-sm sm:text-base",
+      mutedTextClasses
+    )}>
+      Manage patient records and information
+    </p>
+  </div>
+
+  {/* Action Buttons */}
+  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-4">
+    {/* Add Patient Button (Conditional based on role) */}
+    <RoleBasedAccess 
+      requiredPermission="edit_patients" 
+      showError={false}
+    >
+      <Button
+        onClick={() => setIsAddDialogOpen(true)}
+        aria-label="Add new patient"
+        className={cn(
+          "group transition-all duration-300 flex items-center",
+          {
+            "bg-gradient-to-r from-cyan-500 to-blue-500 hover:from-cyan-600 hover:to-blue-600": 
+              theme === "dark" || theme === "morpho",
+            "bg-gradient-to-r from-blue-500 to-purple-500 hover:from-blue-600 hover:to-purple-600": 
+              theme === "light",
+          }
+        )}
+      >
+        <Plus className="w-4 h-4 mr-2 transition-transform group-hover:scale-110" />
+        <span>Add Patient</span>
+      </Button>
+    </RoleBasedAccess>
+
+    {/* Dashboard Link */}
+    <Link href="/" passHlegacyBehavior>
+      <Button 
+        variant="outline" 
+        aria-label="Return to dashboard"
+        className="border-slate-600 text-slate-300 hover:bg-slate-700/50 hover:text-slate-100 transition-colors"
+      >
+        <ArrowLeft className="w-4 h-4 mr-2" />
+        <span>Back to Dashboard</span>
+      </Button>
+    </Link>
+  </div>
+</header>
 
         {/* Search and Filters */}
         <Card className={cn(cardClasses, "mb-6")}>
