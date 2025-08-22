@@ -37,7 +37,7 @@ export function InvoiceDetailsModal({ invoice }: InvoiceDetailsModalProps) {
             <strong>Invoice Number:</strong> {invoice.invoiceNumber}
           </div>
           <div>
-            <strong>Patient:</strong> {invoice.patient?.fullName}
+            <strong>Patient:</strong> {invoice.patient?.name}
           </div>
           <div>
             <strong>Date:</strong>{' '}

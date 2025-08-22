@@ -1,9 +1,10 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import Box from "@mui/material/Box";
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
 import {
@@ -22,7 +23,15 @@ import {
   Calendar,
 } from "lucide-react"
 import Link from "next/link"
+import { useRouter } from "next/navigation";
 import { LabStats } from "@/components/lab-stats"
+import { labService } from "@/app/api/services/labService";
+import { TestCard } from "@/components/TestCard";
+import { NewTestDialog } from "@/components/NewTestDialog";
+import { EditTestDialog } from "@/components/EditTestDialog";
+import { ConfirmDialog } from "@/components/ConfirmDialog";
+import { useToast } from "@/components/ui/use-toast";
+
 
 export default function LaboratoryPage() {
   const [activeTab, setActiveTab] = useState("overview")
@@ -111,42 +120,37 @@ export default function LaboratoryPage() {
 }
 
 function LaboratoryOverview() {
-  const recentTests = [
-    {
-      id: "LAB001",
-      patientName: "Sarah Johnson",
-      testType: "Complete Blood Count",
-      status: "completed",
-      priority: "routine",
-      time: "15 minutes ago",
-    },
-    {
-      id: "LAB002",
-      patientName: "Michael Chen",
-      testType: "Lipid Panel",
-      status: "in_progress",
-      priority: "urgent",
-      time: "30 minutes ago",
-    },
-    {
-      id: "LAB003",
-      patientName: "Emily Rodriguez",
-      testType: "Thyroid Function",
-      status: "pending",
-      priority: "routine",
-      time: "1 hour ago",
-    },
-    {
-      id: "LAB004",
-      patientName: "David Kim",
-      testType: "Cardiac Enzymes",
-      status: "completed",
-      priority: "stat",
-      time: "2 hours ago",
-    },
-  ]
+  const [recentTests, setRecentTests] = useState<any[]>([]);
+  const [equipment, setEquipment] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  const getStatusIcon = (status: string) => {
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        setLoading(true);
+        setError(null);
+        
+        // Fetch recent tests
+        const testsResponse = await labService.getTests();
+        const {data} = await testsResponse.json();
+        setRecentTests(data.slice(0, 4));
+        
+        // Fetch equipment
+        const equipmentResponse = await labService.getEquipment();
+        const equipmentData = await equipmentResponse.json();
+        setEquipment(equipmentData.data);
+      } catch (err: any) {
+        setError(err.message || 'Failed to fetch data');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchData();
+  }, []);
+
+   const getStatusIcon = (status: string) => {
     switch (status) {
       case "completed":
         return <CheckCircle className="w-4 h-4" />
@@ -187,142 +191,248 @@ function LaboratoryOverview() {
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-      {/* Recent Tests */}
-      <Card className="bg-slate-800/50 border-slate-700/50">
-        <CardHeader>
-          <CardTitle className="text-cyan-400">Recent Lab Tests</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          {recentTests.map((test) => (
-            <div key={test.id} className="flex items-center gap-3 p-3 rounded-lg bg-slate-700/30">
-              <div className={`${getStatusColor(test.status)}`}>{getStatusIcon(test.status)}</div>
-              <div className="flex-1">
-                <div className="flex justify-between items-start">
-                  <div>
-                    <p className="text-white text-sm font-medium">{test.patientName}</p>
-                    <p className="text-slate-400 text-xs">{test.testType}</p>
-                  </div>
-                  <div className="text-right">
-                    <p className={`text-xs font-medium ${getPriorityColor(test.priority)}`}>
-                      {test.priority.toUpperCase()}
-                    </p>
-                    <p className="text-slate-400 text-xs">{test.time}</p>
-                  </div>
-                </div>
-              </div>
-            </div>
-          ))}
-        </CardContent>
-      </Card>
+      {/* Error message */}
+      {error && (
+        <div className="col-span-2 bg-red-500/20 border border-red-500/30 text-red-400 p-4 rounded-lg">
+          {error}
+        </div>
+      )}
 
-      {/* Equipment Status */}
-      <Card className="bg-slate-800/50 border-slate-700/50">
-        <CardHeader>
-          <CardTitle className="text-cyan-400">Equipment Status</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="grid grid-cols-1 gap-3">
-            <div className="bg-slate-700/30 rounded-lg p-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-white font-medium">Hematology Analyzer</p>
-                  <p className="text-slate-400 text-sm">Last calibrated: 2 hours ago</p>
+      {/* Loading state */}
+      {loading && (
+        <div className="col-span-2 flex justify-center py-8">
+          <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-cyan-400"></div>
+        </div>
+      )}
+
+      {!loading && (
+        <>
+          {/* Recent Tests */}
+          <Card className="bg-slate-800/50 border-slate-700/50">
+            <CardHeader>
+              <CardTitle className="text-cyan-400">Recent Lab Tests</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {recentTests.map((test) => (
+                <div key={test._id} className="flex items-center gap-3 p-3 rounded-lg bg-slate-700/30">
+                  <div className={`${getStatusColor(test.status)}`}>{getStatusIcon(test.status)}</div>
+                  <div className="flex-1">
+                    <div className="flex justify-between items-start">
+                      <div>
+                        <p className="text-white text-sm font-medium">{test.patientName}</p>
+                        <p className="text-slate-400 text-xs">{test.testType}</p>
+                      </div>
+                      <div className="text-right">
+                        <p className={`text-xs font-medium ${getPriorityColor(test.priority)}`}>
+                          {test.priority.toUpperCase()}
+                        </p>
+                        <p className="text-slate-400 text-xs">
+                          {new Date(test.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
                 </div>
-                <CheckCircle className="w-5 h-5 text-green-400" />
+              ))}
+            </CardContent>
+          </Card>
+
+          {/* Equipment Status */}
+          <Card className="bg-slate-800/50 border-slate-700/50">
+            <CardHeader>
+              <CardTitle className="text-cyan-400">Equipment Status</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid grid-cols-1 gap-3">
+                {equipment.slice(0, 3).map((item) => (
+                  <div key={item._id} className="bg-slate-700/30 rounded-lg p-4">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-white font-medium">{item.name}</p>
+                        <p className="text-slate-400 text-sm">
+                          {item.status === 'online' 
+                            ? `Last calibrated: ${item.lastMaintenance ? new Date(item.lastMaintenance).toLocaleDateString() : 'N/A'}`
+                            : item.status === 'maintenance' 
+                              ? `Maintenance due: ${item.nextMaintenance ? new Date(item.nextMaintenance).toLocaleDateString() : 'N/A'}`
+                              : item.status === 'in_use' ? 'Currently in use' : 'Offline'
+                          }
+                        </p>
+                      </div>
+                      {item.status === 'online' ? (
+                        <CheckCircle className="w-5 h-5 text-green-400" />
+                      ) : item.status === 'maintenance' ? (
+                        <AlertTriangle className="w-5 h-5 text-yellow-400" />
+                      ) : item.status === 'in_use' ? (
+                        <Clock className="w-5 h-5 text-blue-400" />
+                      ) : (
+                        <AlertTriangle className="w-5 h-5 text-red-400" />
+                      )}
+                    </div>
+                  </div>
+                ))}
               </div>
-            </div>
-            <div className="bg-slate-700/30 rounded-lg p-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-white font-medium">Chemistry Analyzer</p>
-                  <p className="text-slate-400 text-sm">Maintenance due in 3 days</p>
-                </div>
-                <AlertTriangle className="w-5 h-5 text-yellow-400" />
-              </div>
-            </div>
-            <div className="bg-slate-700/30 rounded-lg p-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-white font-medium">Microscope Station 1</p>
-                  <p className="text-slate-400 text-sm">Currently in use</p>
-                </div>
-                <Clock className="w-5 h-5 text-blue-400" />
-              </div>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
+            </CardContent>
+          </Card>
+        </>
+      )}
     </div>
-  )
+  );
 }
 
-function TestManager() {
-  const [searchTerm, setSearchTerm] = useState("")
+// components/TestManager.tsx
+// "use client"
 
-  const tests = [
-    {
-      id: "LAB001",
-      patientName: "Sarah Johnson",
-      patientId: "P001",
-      testType: "Complete Blood Count",
-      orderedBy: "Dr. Amanda Wilson",
-      priority: "routine",
-      status: "completed",
-      orderDate: "2024-01-15",
-      sampleType: "Blood",
-    },
-    {
-      id: "LAB002",
-      patientName: "Michael Chen",
-      patientId: "P002",
-      testType: "Lipid Panel",
-      orderedBy: "Dr. James Rodriguez",
-      priority: "urgent",
-      status: "in_progress",
-      orderDate: "2024-01-15",
-      sampleType: "Blood",
-    },
-    {
-      id: "LAB003",
-      patientName: "Emily Rodriguez",
-      patientId: "P003",
-      testType: "Thyroid Function",
-      orderedBy: "Dr. Lisa Chen",
-      priority: "routine",
-      status: "pending",
-      orderDate: "2024-01-14",
-      sampleType: "Blood",
-    },
-  ]
+// import { useState, useEffect } from "react";
 
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case "completed":
-        return "bg-green-500/20 text-green-400 border-green-500/30"
-      case "in_progress":
-        return "bg-blue-500/20 text-blue-400 border-blue-500/30"
-      case "pending":
-        return "bg-yellow-500/20 text-yellow-400 border-yellow-500/30"
-      default:
-        return "bg-slate-500/20 text-slate-400 border-slate-500/30"
+// import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+// import { Button } from "@/components/ui/button";
+// import { Input } from "@/components/ui/input";
+// import { Badge } from "@/components/ui/badge";
+// import { Search, Filter, Plus, Trash2, Pencil, TestTube } from "lucide-react";
+
+
+export function TestManager() {
+  const router = useRouter();
+  const { toast } = useToast();
+  const [searchTerm, setSearchTerm] = useState("");
+  const [tests, setTests] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [pagination, setPagination] = useState({
+    page: 1,
+    limit: 10,
+    total: 0
+  });
+  const [selectedTest, setSelectedTest] = useState<any>(null)
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+
+  const fetchTests = async (page = 1) => {
+    try {
+      setLoading(true);
+      setError(null);
+      const query = `?page=${page}&limit=${pagination.limit}&sort=-createdAt`;
+      const response = await labService.getTests(query);
+      const testData = await response.json();
+        console.log("testData Data:", testData);
+      console.log('testmanger', response)
+      setTests(testData.data);
+      setPagination({
+        page: testData.pagination?.page || 1,
+        limit: testData.pagination?.limit || 10,
+        total: testData.pagination?.total || 0
+      });
+    } catch (err: any) {
+      setError(err.message || 'Failed to fetch tests');
+      toast({
+        title: "Error",
+        description: err.message || "Failed to fetch tests",
+        variant: "destructive",
+      });
+    } finally {
+      setLoading(false);
     }
-  }
+  };
 
-  const getPriorityColor = (priority: string) => {
-    switch (priority) {
-      case "stat":
-        return "bg-red-500/20 text-red-400 border-red-500/30"
-      case "urgent":
-        return "bg-orange-500/20 text-orange-400 border-orange-500/30"
-      case "routine":
-        return "bg-green-500/20 text-green-400 border-green-500/30"
-      default:
-        return "bg-slate-500/20 text-slate-400 border-slate-500/30"
+  useEffect(() => {
+    fetchTests();
+  }, []);
+
+  const handleCreateTest = async (testData: any) => {
+    try {
+      const response = await labService.createTest(testData);
+      setTests([response.data, ...tests]);
+      toast({
+        title: "Success",
+        description: "Test created successfully",
+      });
+      return true;
+    } catch (err: any) {
+      toast({
+        title: "Error",
+        description: err.message || "Failed to create test",
+        variant: "destructive",
+      });
+      return false;
     }
-  }
+  };
+
+  const handleUpdateTest = async (id: string, data: any) => {
+    try {
+      const response = await labService.updateTest(id, data);
+      console.log('edit', response)
+      setTests(tests.map(test => 
+        test._id === id ? response.data : test
+      ));
+      setSelectedTest(null);
+      toast({
+        title: "Success",
+        description: "Test updated successfully",
+      });
+      return true;
+    } catch (err: any) {
+      toast({
+        title: "Error",
+        description: err.message || "Failed to update test",
+        variant: "destructive",
+      });
+      return false;
+    }
+  };
+
+  const handleDeleteTest = async (id: string) => {
+    try {
+      await labService.deleteTest(id);
+      setTests(tests.filter(test => test._id !== id));
+      toast({
+        title: "Success",
+        description: "Test deleted successfully",
+      });
+      return true;
+    } catch (err: any) {
+      toast({
+        title: "Error",
+        description: err.message || "Failed to delete test",
+        variant: "destructive",
+      });
+      return false;
+    }
+  };
+
+  const handleStatusChange = async (testId: string, newStatus: string) => {
+    try {
+      await labService.updateTest(testId, { status: newStatus });
+      setTests(tests.map(test => 
+        test._id === testId ? { ...test, status: newStatus } : test
+      ));
+      toast({
+        title: "Success",
+        description: `Test status updated to ${newStatus.replace('_', ' ')}`,
+      });
+    } catch (err: any) {
+      toast({
+        title: "Error",
+        description: err.message || "Failed to update test status",
+        variant: "destructive",
+      });
+    }
+  };
+console.log('tests', tests)
+  const filteredTests = tests.filter(test =>
+    test?.patientName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    test?.testType.toLowerCase().includes(searchTerm.toLowerCase())
+  );
+
+  console.log(filteredTests)
 
   return (
     <div className="space-y-6">
+      {/* Error message */}
+      {error && (
+        <div className="bg-red-500/20 border border-red-500/30 text-red-400 p-4 rounded-lg">
+          {error}
+        </div>
+      )}
+
       {/* Search and Actions */}
       <Card className="bg-slate-800/50 border-slate-700/50">
         <CardContent className="p-6">
@@ -341,170 +451,240 @@ function TestManager() {
                 <Filter className="w-4 h-4 mr-2" />
                 Filter
               </Button>
-              <Button className="bg-gradient-to-r from-cyan-500 to-purple-500 hover:opacity-90">
-                <Plus className="w-4 h-4 mr-2" />
-                Order Test
-              </Button>
+              <NewTestDialog onCreate={handleCreateTest} />
             </div>
           </div>
         </CardContent>
       </Card>
 
+      {/* Loading state */}
+      {loading && (
+        <div className="flex justify-center py-8">
+          <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-cyan-400"></div>
+        </div>
+      )}
+
       {/* Tests List */}
-      <div className="grid gap-4">
-        {tests.map((test) => (
-          <Card
-            key={test.id}
-            className="bg-slate-800/50 border-slate-700/50 hover:border-cyan-500/50 transition-all duration-300"
-          >
-            <CardContent className="p-6">
-              <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-                <div className="flex-1">
-                  <div className="flex items-center gap-3 mb-3">
-                    <div className="w-12 h-12 rounded-full bg-gradient-to-r from-cyan-500 to-purple-500 flex items-center justify-center text-white">
-                      <TestTube className="w-6 h-6" />
-                    </div>
-                    <div>
-                      <h3 className="text-xl font-semibold text-white">{test.patientName}</h3>
-                      <p className="text-slate-400">
-                        {test.testType} • Ordered by {test.orderedBy}
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 text-sm">
-                    <div className="flex items-center gap-2 text-slate-300">
-                      <User className="w-4 h-4 text-slate-400" />
-                      Patient ID: {test.patientId}
-                    </div>
-                    <div className="flex items-center gap-2 text-slate-300">
-                      <Calendar className="w-4 h-4 text-slate-400" />
-                      Ordered: {test.orderDate}
-                    </div>
-                    <div className="flex items-center gap-2 text-slate-300">
-                      <TestTube className="w-4 h-4 text-slate-400" />
-                      Sample: {test.sampleType}
-                    </div>
-                  </div>
-                </div>
-
-                <div className="flex flex-col gap-3">
-                  <div className="flex gap-2">
-                    <Badge className={getStatusColor(test.status)}>{test.status.replace("_", " ")}</Badge>
-                    <Badge className={getPriorityColor(test.priority)}>{test.priority}</Badge>
-                  </div>
-                  <div className="flex gap-2">
-                    <Button size="sm" variant="outline" className="border-slate-600 text-slate-300 hover:bg-slate-700">
-                      View Details
+      {!loading && (
+        <>
+          <div className="grid gap-4">
+            {filteredTests.length === 0 ? (
+              <div className="text-center py-12 text-slate-400">
+                <TestTube className="mx-auto h-12 w-12" />
+                <h3 className="mt-2 text-sm font-medium">No tests found</h3>
+                <p className="mt-1 text-sm">Create a new test to get started</p>
+                <div className="mt-6">
+                  <NewTestDialog onCreate={handleCreateTest}>
+                    <Button className="bg-gradient-to-r from-cyan-500 to-purple-500 hover:opacity-90">
+                      <Plus className="w-4 h-4 mr-2" />
+                      New Test
                     </Button>
-                    <Button size="sm" className="bg-gradient-to-r from-cyan-500 to-purple-500 hover:opacity-90">
-                      Process
-                    </Button>
-                  </div>
+                  </NewTestDialog>
                 </div>
               </div>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
+            ) : (<Box
+  sx={{
+    maxHeight: "70vh",
+    overflowY: "auto",
+    pr: 1,
+    '&::-webkit-scrollbar': {
+      width: '6px',
+    },
+    '&::-webkit-scrollbar-thumb': {
+      backgroundColor: '#ccc',
+      borderRadius: '3px',
+    },
+  }}
+>
+              {filteredTests.map((test) => (
+                <TestCard 
+                  key={test._id} 
+                  test={test} 
+                  onStatusChange={handleStatusChange}
+                  onEdit={() => setSelectedTest(test)}
+                  onDelete={() => {
+                    setSelectedTest(test);
+                    setIsDeleteDialogOpen(true);
+                  }}
+                />
+              ))}
+              </Box>
+            )}
+          </div>
+
+          {/* Pagination */}
+          {pagination.total > pagination.limit && (
+            <div className="flex justify-between items-center mt-4">
+              <Button
+                variant="outline"
+                disabled={pagination.page === 1}
+                onClick={() => fetchTests(pagination.page - 1)}
+                className="border-slate-600 text-slate-300 hover:bg-slate-700"
+              >
+                Previous
+              </Button>
+              <span className="text-slate-400">
+                Page {pagination.page} of {Math.ceil(pagination.total / pagination.limit)}
+              </span>
+              <Button
+                variant="outline"
+                disabled={pagination.page * pagination.limit >= pagination.total}
+                onClick={() => fetchTests(pagination.page + 1)}
+                className="border-slate-600 text-slate-300 hover:bg-slate-700"
+              >
+                Next
+              </Button>
+            </div>
+          )}
+        </>
+      )}
+
+      {/* Edit Dialog */}
+      {selectedTest && (
+        <EditTestDialog
+          test={selectedTest}
+          onTestUpdated={(data) => handleUpdateTest(selectedTest._id, data)}
+          onOpenChange={(open) => !open && setSelectedTest(null)}
+        />
+      )}
+
+      {/* Delete Confirmation */}
+      <ConfirmDialog
+        isOpen={isDeleteDialogOpen}
+        onClose={() => setIsDeleteDialogOpen(false)}
+        onConfirm={async () => {
+          if (selectedTest) {
+            await handleDeleteTest(selectedTest._id);
+            setIsDeleteDialogOpen(false);
+          }
+        }}
+        title="Delete Test"
+        description={`Are you sure you want to delete the test for ${selectedTest?.patientName}?`}
+        confirmText="Delete"
+        variant="destructive"
+      />
     </div>
-  )
+  );
 }
 
 function LabResults() {
-  const results = [
-    {
-      id: "LAB001",
-      patientName: "Sarah Johnson",
-      testType: "Complete Blood Count",
-      status: "Final",
-      resultDate: "2024-01-15",
-      criticalValues: false,
-      technician: "Lab Tech 1",
-    },
-    {
-      id: "LAB002",
-      patientName: "Michael Chen",
-      testType: "Lipid Panel",
-      status: "Preliminary",
-      resultDate: "2024-01-15",
-      criticalValues: true,
-      technician: "Lab Tech 2",
-    },
-  ]
+  const [results, setResults] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const fetchResults = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      const response = await labService.getResults();
+      console.log("Fetched results:", response.data);
+      setResults(response.data);
+    } catch (err: any) {
+      setError(err.message || 'Failed to fetch results');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchResults();
+  }, []);
 
   return (
     <div className="space-y-6">
-      <Card className="bg-slate-800/50 border-slate-700/50">
-        <CardHeader>
-          <CardTitle className="text-cyan-400">Lab Results</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          {results.map((result) => (
-            <div key={result.id} className="bg-slate-700/30 rounded-lg p-4">
-              <div className="flex justify-between items-start mb-3">
-                <div>
-                  <h4 className="text-white font-semibold">{result.patientName}</h4>
+      {/* Error message */}
+      {error && (
+        <div className="bg-red-500/20 border border-red-500/30 text-red-400 p-4 rounded-lg">
+          {error}
+        </div>
+      )}
+
+      {/* Loading state */}
+      {loading && (
+        <div className="flex justify-center py-8">
+          <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-cyan-400"></div>
+        </div>
+      )}
+
+      {!loading && (
+        <Card className="bg-slate-800/50 border-slate-700/50">
+          <CardHeader>
+            <CardTitle className="text-cyan-400">Lab Results</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {results.map((result) => (
+              <div key={result._id} className="bg-slate-700/30 rounded-lg p-4">
+                <div className="flex justify-between items-start mb-3">
+                  <div>
+                    <h4 className="text-white font-semibold">{result.patientName}</h4>
+                    <p className="text-slate-400 text-sm">
+                      {result.testType} • {result.technician}
+                    </p>
+                  </div>
+                  <div className="flex gap-2">
+                    {result.criticalValues && (
+                      <Badge className="bg-red-500/20 text-red-400 border-red-500/30">Critical</Badge>
+                    )}
+                    <Badge
+                      className={
+                        result.status === "Final"
+                          ? "bg-green-500/20 text-green-400 border-green-500/30"
+                          : "bg-yellow-500/20 text-yellow-400 border-yellow-500/30"
+                      }
+                    >
+                      {result.status}
+                    </Badge>
+                  </div>
+                </div>
+                <div className="flex justify-between items-center">
                   <p className="text-slate-400 text-sm">
-                    {result.testType} • {result.technician}
+                    Result Date: {new Date(result.resultDate).toLocaleString()}
                   </p>
-                </div>
-                <div className="flex gap-2">
-                  {result.criticalValues && (
-                    <Badge className="bg-red-500/20 text-red-400 border-red-500/30">Critical</Badge>
-                  )}
-                  <Badge
-                    className={
-                      result.status === "Final"
-                        ? "bg-green-500/20 text-green-400 border-green-500/30"
-                        : "bg-yellow-500/20 text-yellow-400 border-yellow-500/30"
-                    }
-                  >
-                    {result.status}
-                  </Badge>
+                  <Button size="sm" className="bg-gradient-to-r from-cyan-500 to-purple-500 hover:opacity-90">
+                    View Results
+                  </Button>
                 </div>
               </div>
-              <div className="flex justify-between items-center">
-                <p className="text-slate-400 text-sm">Result Date: {result.resultDate}</p>
-                <Button size="sm" className="bg-gradient-to-r from-cyan-500 to-purple-500 hover:opacity-90">
-                  View Results
-                </Button>
-              </div>
-            </div>
-          ))}
-        </CardContent>
-      </Card>
+            ))}
+          </CardContent>
+        </Card>
+      )}
     </div>
-  )
+  );
 }
 
 function EquipmentMonitor() {
-  const equipment = [
-    {
-      name: "Hematology Analyzer",
-      model: "HA-2000",
-      status: "Online",
-      lastMaintenance: "2024-01-10",
-      nextMaintenance: "2024-04-10",
-      testsToday: 45,
-    },
-    {
-      name: "Chemistry Analyzer",
-      model: "CA-5000",
-      status: "Maintenance Required",
-      lastMaintenance: "2023-12-15",
-      nextMaintenance: "2024-01-18",
-      testsToday: 0,
-    },
-    {
-      name: "Microscope Station 1",
-      model: "MS-Pro",
-      status: "In Use",
-      lastMaintenance: "2024-01-05",
-      nextMaintenance: "2024-04-05",
-      testsToday: 12,
-    },
-  ]
+  const [equipment, setEquipment] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const fetchEquipment = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      const response = await labService.getEquipment();
+      setEquipment(response.data);
+    } catch (err: any) {
+      setError(err.message || 'Failed to fetch equipment');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchEquipment();
+  }, []);
+
+  const handleStatusChange = async (id: string, newStatus: string) => {
+    try {
+      await labService.updateEquipmentStatus(id, newStatus);
+      setEquipment(equipment.map(item => 
+        item._id === id ? { ...item, status: newStatus } : item
+      ));
+    } catch (err: any) {
+      setError(err.message || 'Failed to update equipment status');
+    }
+  };
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -523,45 +703,74 @@ function EquipmentMonitor() {
 
   return (
     <div className="space-y-6">
-      <Card className="bg-slate-800/50 border-slate-700/50">
-        <CardHeader>
-          <CardTitle className="text-cyan-400">Equipment Monitor</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          {equipment.map((item, index) => (
-            <div key={index} className="bg-slate-700/30 rounded-lg p-4">
-              <div className="flex justify-between items-start mb-3">
-                <div>
-                  <h4 className="text-white font-semibold">{item.name}</h4>
-                  <p className="text-slate-400 text-sm">Model: {item.model}</p>
+      {/* Error message */}
+      {error && (
+        <div className="bg-red-500/20 border border-red-500/30 text-red-400 p-4 rounded-lg">
+          {error}
+        </div>
+      )}
+
+      {/* Loading state */}
+      {loading && (
+        <div className="flex justify-center py-8">
+          <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-cyan-400"></div>
+        </div>
+      )}
+
+      {!loading && (
+        <Card className="bg-slate-800/50 border-slate-700/50">
+          <CardHeader>
+            <CardTitle className="text-cyan-400">Equipment Monitor</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {equipment.map((item) => (
+              <div key={item._id} className="bg-slate-700/30 rounded-lg p-4">
+                <div className="flex justify-between items-start mb-3">
+                  <div>
+                    <h4 className="text-white font-semibold">{item.name}</h4>
+                    <p className="text-slate-400 text-sm">Model: {item.model}</p>
+                  </div>
+                  <select
+                    value={item.status}
+                    onChange={(e) => handleStatusChange(item._id, e.target.value)}
+                    className={`px-2 py-1 rounded text-xs ${getStatusColor(item.status)} bg-slate-800 border border-slate-600`}
+                  >
+                    <option value="online">Online</option>
+                    <option value="in_use">In Use</option>
+                    <option value="maintenance">Maintenance</option>
+                    <option value="offline">Offline</option>
+                  </select>
                 </div>
-                <Badge className={getStatusColor(item.status)}>{item.status}</Badge>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                  <div>
+                    <p className="text-slate-400">Tests Today</p>
+                    <p className="text-white font-semibold">{item.testsToday || 0}</p>
+                  </div>
+                  <div>
+                    <p className="text-slate-400">Last Maintenance</p>
+                    <p className="text-white">
+                      {item.lastMaintenance ? new Date(item.lastMaintenance).toLocaleDateString() : 'N/A'}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-slate-400">Next Maintenance</p>
+                    <p className="text-white">
+                      {item.nextMaintenance ? new Date(item.nextMaintenance).toLocaleDateString() : 'N/A'}
+                    </p>
+                  </div>
+                  <div className="flex items-end">
+                    <Button size="sm" variant="outline" className="border-slate-600 text-slate-300 hover:bg-slate-700">
+                      Manage
+                    </Button>
+                  </div>
+                </div>
               </div>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
-                <div>
-                  <p className="text-slate-400">Tests Today</p>
-                  <p className="text-white font-semibold">{item.testsToday}</p>
-                </div>
-                <div>
-                  <p className="text-slate-400">Last Maintenance</p>
-                  <p className="text-white">{item.lastMaintenance}</p>
-                </div>
-                <div>
-                  <p className="text-slate-400">Next Maintenance</p>
-                  <p className="text-white">{item.nextMaintenance}</p>
-                </div>
-                <div className="flex items-end">
-                  <Button size="sm" variant="outline" className="border-slate-600 text-slate-300 hover:bg-slate-700">
-                    Manage
-                  </Button>
-                </div>
-              </div>
-            </div>
-          ))}
-        </CardContent>
-      </Card>
+            ))}
+          </CardContent>
+        </Card>
+      )}
     </div>
-  )
+  );
 }
 
 function LabReports() {

@@ -164,12 +164,12 @@ export function BillingManager() {
                 <div className="flex-1">
                   <div className="flex items-center gap-3 mb-3">
                     <div className="w-12 h-12 rounded-full bg-gradient-to-r from-cyan-500 to-purple-500 flex items-center justify-center text-white font-bold">
-                      {invoice.invoiceNumber.slice(-2)}
+                      {invoice?.invoiceNumber.slice(-2)}
                     </div>
                     <div>
-                      <h3 className="text-xl font-semibold text-white">{invoice.patient.fullName}</h3>
+                      <h3 className="text-xl font-semibold text-white">{invoice.patient?.name}</h3>
                       <p className="text-slate-400">
-                        Invoice {invoice.invoiceNumber} • Patient ID: {invoice.patient.id}
+                        Invoice {invoice?.invoiceNumber} • Patient ID: {invoice.patient?.medicalRecordNumber}
                       </p>
                     </div>
                   </div>

@@ -1,92 +1,533 @@
 "use client";
 
+import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+import { Label } from "@/components/ui/label";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { loadStripe } from "@stripe/stripe-js";
+import { Elements, useStripe, useElements, PaymentElement } from "@stripe/react-stripe-js";
+import { authFetch } from '@/lib/api'
+import { AlertCircle, Info } from "lucide-react";
 
-  const payments = [
-    {
-      id: "PAY001",
-      patientName: "Sarah Johnson",
-      amount: 450.75,
-      method: "Credit Card",
-      status: "Completed",
-      date: "2024-01-15",
-      transactionId: "TXN123456789",
-    },
-    {
-      id: "PAY002",
-      patientName: "Michael Chen",
-      amount: 1250.0,
-      method: "Insurance",
-      status: "Processing",
-      date: "2024-01-15",
-      transactionId: "TXN987654321",
-    },
-    {
-      id: "PAY003",
-      patientName: "Emily Rodriguez",
-      amount: 890.25,
-      method: "Cash",
-      status: "Completed",
-      date: "2024-01-14",
-      transactionId: "TXN456789123",
-    },
-  ]
+const API_URL = process.env.NEXT_PUBLIC_API_BASE_URL; 
+const stripePromise = loadStripe(process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY!);
 
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case "Completed":
-        return "bg-green-500/20 text-green-400 border-green-500/30"
-      case "Processing":
-        return "bg-yellow-500/20 text-yellow-400 border-yellow-500/30"
-      case "Failed":
-        return "bg-red-500/20 text-red-400 border-red-500/30"
-      default:
-        return "bg-slate-500/20 text-slate-400 border-slate-500/30"
+type Billing = {
+  id: string;
+  invoiceNumber: string;
+  patient: {
+    id: string;
+    name: string;
+  };
+  total: number;
+  balanceDue: number;
+  status: string;
+  items: Array<{
+    description: string;
+    amount: number;
+  }>;
+};
+
+type Payment = {
+  id: string;
+  billingId: string;
+  invoiceNumber: string;
+  patientName: string;
+  amount: number;
+  method: string;
+  status: string;
+  date: string;
+  transactionId: string;
+};
+
+interface UpdateBackendPaymentStatusParams {
+  paymentIntentId: string;
+  amount?: number;
+}
+
+const CheckoutForm = ({ 
+  amount, 
+  billingId,
+  onSuccess,
+  onClose,
+  onValidation
+}: {
+  amount: number;
+  billingId: string;
+  onSuccess: () => void;
+  onClose: () => void;
+  onValidation: () => boolean;
+}) => {
+  const stripe = useStripe();
+  const elements = useElements();
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [errorStripe, setErrorStripe] = useState("");
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    if (!stripe || !elements) {
+      return;
     }
-  }
 
+    // Validate amount before proceeding
+    if (!onValidation()) {
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
+
+    try {
+      // First submit the payment element to gather payment details
+      const { error: submitError } = await elements.submit();
+      if (submitError) {
+        throw submitError;
+      }
+
+      const response = await authFetch(`${API_URL}/v1/financial/bills/${billingId}/payments/intent`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ amount })
+      });
+
+      if (!response.ok) throw new Error('Failed to create payment intent');
+      
+      const paymentData = await response.json();
+      const clientSecret = paymentData.data.clientSecret;
+
+      const { paymentIntent, error: stripeError } = await stripe.confirmPayment({
+        elements,
+        clientSecret,
+        confirmParams: {
+          return_url: `${window.location.origin}/payment-success`,
+          receipt_email: 'katsisaac50@gmail.com', // Get from patient data
+        },
+        redirect: 'if_required',
+      });
+
+      if (stripeError) {
+        setErrorStripe(stripeError.message ?? "An unknown error occurred");
+        throw stripeError;
+      }
+
+      // Handle successful payment
+      if (paymentIntent?.status === 'succeeded') {
+        await updateBackendPaymentStatus(paymentIntent.id, amount);
+        onSuccess();
+        onClose();
+      } else {
+        throw new Error('Payment not completed successfully');
+      }
+
+    } catch (err) {
+      console.error('Payment error:', err);
+      setError(err instanceof Error ? err.message : `Payment failed: ${errorStripe}`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Update backend payment status with amount
+  const updateBackendPaymentStatus = async (paymentIntentId: string, paidAmount: number): Promise<void> => {
+    const response: Response = await authFetch(`${API_URL}/v1/payments/verify-payment`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ 
+        paymentIntentId,
+        amount: paidAmount 
+      } as UpdateBackendPaymentStatusParams)
+    });
+    
+    if (!response.ok) {
+      throw new Error('Payment verification failed');
+    }
+  };
+
+  return (
+    <form onSubmit={handleSubmit} className="space-y-4">
+      <div className="bg-slate-700/20 p-3 rounded-lg">
+        <div className="flex justify-between text-sm">
+          <span className="text-slate-400">Paying:</span>
+          <span className="text-green-400 font-medium">${amount.toFixed(2)}</span>
+        </div>
+      </div>
+
+      <PaymentElement options={{ layout: 'tabs' }} />
+      
+      {error && (
+        <Alert variant="destructive" className="bg-red-900/20 border-red-800">
+          <AlertCircle className="h-4 w-4" />
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
+      )}
+      
+      <div className="flex justify-end gap-2">
+        <Button type="button" variant="outline" onClick={onClose} disabled={loading}>
+          Cancel
+        </Button>
+        <Button type="submit" disabled={!stripe || loading}>
+          {loading ? 'Processing...' : `Pay $${amount.toFixed(2)}`}
+        </Button>
+      </div>
+    </form>
+  );
+};
 
 export function PaymentProcessor() {
+  const [billings, setBillings] = useState<Billing[]>([]);
+  const [payments, setPayments] = useState<Payment[]>([]);
+  const [selectedBilling, setSelectedBilling] = useState<Billing | null>(null);
+  const [paymentAmount, setPaymentAmount] = useState(0);
+  const [isCustomAmount, setIsCustomAmount] = useState(false);
+  const [amountError, setAmountError] = useState('');
+  const [loading, setLoading] = useState({ billings: true, payments: true });
+  const [error, setError] = useState<string | null>(null);
+  const [paymentDialogOpen, setPaymentDialogOpen] = useState(false);
+  const [showOutstandingInvoices, setShowOutstandingInvoices] = useState(false);
+
+  const fetchData = async () => {
+    try {
+      setLoading(prev => ({ ...prev, billings: true, payments: true }));
+      
+      // Fetch billings with outstanding balances
+      const billingsRes = await authFetch(`${API_URL}/v1/financial/unpaid`);
+      const billingsData = await billingsRes.json();
+      // console.log('fetch bills', billingsData)
+      setBillings(billingsData.data);
+      
+      // Fetch payment history
+      const paymentsRes = await authFetch(`${API_URL}/v1/payments`);
+      const paymentsData = await paymentsRes.json();
+      // console.log('Fetched payments:', paymentsData);
+      setPayments(paymentsData.data);
+      
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'An error occurred');
+    } finally {
+      setLoading(prev => ({ ...prev, billings: false, payments: false }));
+    }
+  };
+
+  useEffect(() => {
+    fetchData();
+  }, []);
+
+  const handleNewPayment = (billing: Billing) => {
+    setSelectedBilling(billing);
+    setPaymentAmount(billing.balanceDue);
+    setIsCustomAmount(false);
+    setAmountError('');
+    setPaymentDialogOpen(true);
+  };
+
+  const handlePaymentSuccess = () => {
+    fetchData(); // Refresh data
+    setPaymentDialogOpen(false);
+    setPaymentAmount(0);
+    setIsCustomAmount(false);
+    setAmountError('');
+  };
+
+  const handleAmountChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = parseFloat(e.target.value);
+    if (!isNaN(value) && value >= 0) {
+      setPaymentAmount(value);
+      validateAmount(value);
+    } else {
+      setPaymentAmount(0);
+      setAmountError('Please enter a valid amount');
+    }
+  };
+
+  const handleFullAmountClick = () => {
+    if (selectedBilling) {
+      setPaymentAmount(selectedBilling.balanceDue);
+      setIsCustomAmount(false);
+      setAmountError('');
+    }
+  };
+
+  const handleCustomAmountClick = () => {
+    setIsCustomAmount(true);
+    if (selectedBilling) {
+      setPaymentAmount(selectedBilling.balanceDue);
+    }
+  };
+
+  const validateAmount = (amount: number) => {
+    if (!selectedBilling) return false;
+
+    if (amount <= 0) {
+      setAmountError('Payment amount must be greater than 0');
+      return false;
+    }
+    if (amount > selectedBilling.balanceDue + 0.01) {
+      setAmountError('Payment amount cannot exceed the total due');
+      return false;
+    }
+    if (amount < selectedBilling.balanceDue * 0.1) {
+      setAmountError('Minimum payment is 10% of the total due');
+      return false;
+    }
+    setAmountError('');
+    return true;
+  };
+
+  const validatePaymentAmount = () => {
+    return validateAmount(paymentAmount);
+  };
+
+  const toggleOutstandingInvoices = () => {
+    setShowOutstandingInvoices(prev => !prev);
+  };
+
+  if (loading.billings || loading.payments) {
+    return <div className="flex justify-center items-center h-64">Loading...</div>;
+  }
+
+  if (error) {
+    return <div className="bg-red-500/20 text-red-400 p-4 rounded-lg">Error: {error}</div>;
+  }
 
   return (
     <div className="space-y-6">
       <Card className="bg-slate-800/50 border-slate-700/50">
         <CardHeader>
-          <CardTitle className="text-cyan-400">Payment Processing</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          {payments.map((payment) => (
-            <div key={payment.id} className="bg-slate-700/30 rounded-lg p-4">
-              <div className="flex justify-between items-start mb-3">
-                <div>
-                  <h4 className="text-white font-semibold">{payment.patientName}</h4>
-                  <p className="text-slate-400 text-sm">Payment ID: {payment.id}</p>
-                </div>
-                <Badge className={getStatusColor(payment.status)}>{payment.status}</Badge>
-              </div>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
-                <div>
-                  <p className="text-slate-400">Amount</p>
-                  <p className="text-white font-semibold">${payment.amount.toFixed(2)}</p>
-                </div>
-                <div>
-                  <p className="text-slate-400">Method</p>
-                  <p className="text-white">{payment.method}</p>
-                </div>
-                <div>
-                  <p className="text-slate-400">Date</p>
-                  <p className="text-white">{payment.date}</p>
-                </div>
-                <div>
-                  <p className="text-slate-400">Transaction ID</p>
-                  <p className="text-white text-xs">{payment.transactionId}</p>
-                </div>
-              </div>
+          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+            <CardTitle className="text-cyan-400">Payment Processing</CardTitle>
+            <div className="flex gap-3">
+              <Button 
+                onClick={toggleOutstandingInvoices}
+                className="bg-cyan-600 hover:bg-cyan-700"
+                disabled={billings.length === 0}
+              >
+                {showOutstandingInvoices ? 'Hide Outstanding Invoices' : 'View Outstanding Invoices'}
+              </Button>
             </div>
-          ))}
+          </div>
+        </CardHeader>
+        
+        <CardContent className="space-y-6">
+          {showOutstandingInvoices && (
+            <div>
+              <h3 className="text-lg font-semibold text-white mb-4">Outstanding Invoices</h3>
+              {billings.length === 0 ? (
+                <p className="text-slate-400">No outstanding invoices</p>
+              ) : (
+                <div className="space-y-3">
+                  {billings.map(billing => (
+                    <div key={billing.id} className="bg-slate-700/30 p-4 rounded-lg">
+                      <div className="flex justify-between items-center">
+                        <div>
+                          <h4 className="font-medium text-white">
+                            {billing.invoiceNumber} - {billing.patient?.name}
+                          </h4>
+                          <p className="text-sm text-slate-400">
+                            Balance Due: ${billing.balanceDue.toFixed(2)}
+                          </p>
+                        </div>
+                        <Button 
+                          size="sm" 
+                          onClick={() => handleNewPayment(billing)}
+                        >
+                          Pay Now
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+          {/* <div>
+            <h3 className="text-lg font-semibold text-white mb-4">Outstanding Invoices</h3>
+            {billings.length === 0 ? (
+              <p className="text-slate-400">No outstanding invoices</p>
+            ) : (
+              <div className="space-y-3">
+                {billings.map(billing => (
+                  <div key={billing.id} className="bg-slate-700/30 p-4 rounded-lg">
+                    <div className="flex justify-between items-center">
+                      <div>
+                        <h4 className="font-medium text-white">
+                          {billing.invoiceNumber} - {billing.patient?.name}
+                        </h4>
+                        <p className="text-sm text-slate-400">
+                          Balance Due: ${billing.balanceDue.toFixed(2)}
+                        </p>
+                      </div>
+                      <Button 
+                        size="sm" 
+                        onClick={() => handleNewPayment(billing)}
+                      >
+                        Pay Now
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div> */}
+
+          <div>
+            <h3 className="text-lg font-semibold text-white mb-4">Payment History</h3>
+            {payments.length === 0 ? (
+              <p className="text-slate-400">No payment history</p>
+            ) : (
+              <div className="space-y-3">
+                {payments.map(payment => (
+                  <div key={payment.id} className="bg-slate-700/30 p-4 rounded-lg">
+                    <div className="flex justify-between items-start">
+                      <div>
+                        <h4 className="font-medium text-white">{payment.paymentId} - {payment.patient.name}</h4>
+                        <p className="text-sm text-slate-400">
+                          Invoice: {payment.invoiceNumber} • ${payment.amount.toFixed(2)}
+                        </p>
+                      </div>
+                      <Badge className={getStatusColor(payment.status)}>
+                        {payment.status}
+                      </Badge>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         </CardContent>
       </Card>
+
+      {selectedBilling && (
+        <Dialog open={paymentDialogOpen} onOpenChange={setPaymentDialogOpen}>
+          <DialogContent className="sm:max-w-[450px] bg-slate-800 border-slate-700 max-h-[90vh] flex flex-col">
+            <DialogHeader className="flex-shrink-0">
+              <DialogTitle className="text-cyan-400">
+                Pay Invoice #{selectedBilling.invoiceNumber}
+              </DialogTitle>
+            </DialogHeader>
+            
+            <div className="flex-1 overflow-y-auto space-y-4 pr-2">
+              {/* Billing Summary */}
+              <div className="bg-slate-700/30 p-4 rounded-lg">
+                <div className="flex justify-between mb-2">
+                  <span className="text-slate-400">Patient:</span>
+                  <span className="text-white">{selectedBilling.patient?.name}</span>
+                </div>
+                <div className="flex justify-between mb-2">
+                  <span className="text-slate-400">Total Due:</span>
+                  <span className="text-white">${selectedBilling.balanceDue.toFixed(2)}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-400">Minimum Payment:</span>
+                  <span className="text-amber-400">
+                    ${(selectedBilling.balanceDue * 0.1).toFixed(2)}
+                  </span>
+                </div>
+              </div>
+
+              {/* Payment Amount Selection */}
+              <div className="space-y-3">
+                <Label className="text-slate-300">Payment Amount</Label>
+                
+                <div className="flex gap-2">
+                  <Button
+                    type="button"
+                    variant={!isCustomAmount ? "default" : "outline"}
+                    className="flex-1 bg-cyan-600 hover:bg-cyan-700 text-xs sm:text-sm"
+                    onClick={handleFullAmountClick}
+                  >
+                    Pay Full Amount (${selectedBilling.balanceDue.toFixed(2)})
+                  </Button>
+                  <Button
+                    type="button"
+                    variant={isCustomAmount ? "default" : "outline"}
+                    className="flex-1 bg-purple-600 hover:bg-purple-700 text-xs sm:text-sm"
+                    onClick={handleCustomAmountClick}
+                  >
+                    Custom Amount
+                  </Button>
+                </div>
+
+                {isCustomAmount && (
+                  <div className="space-y-2">
+                    <Input
+                      type="number"
+                      value={paymentAmount}
+                      onChange={handleAmountChange}
+                      min={selectedBilling.balanceDue * 0.1}
+                      max={selectedBilling.balanceDue}
+                      step="0.01"
+                      className="bg-slate-700 border-slate-600 text-white"
+                      placeholder="Enter payment amount"
+                    />
+                    <div className="flex justify-between text-sm text-slate-400">
+                      <span>Min: ${(selectedBilling.balanceDue * 0.1).toFixed(2)}</span>
+                      <span>Max: ${selectedBilling.balanceDue.toFixed(2)}</span>
+                    </div>
+                  </div>
+                )}
+
+                {amountError && (
+                  <Alert variant="destructive" className="bg-red-900/20 border-red-800">
+                    <AlertCircle className="h-4 w-4" />
+                    <AlertDescription>{amountError}</AlertDescription>
+                  </Alert>
+                )}
+
+                {isCustomAmount && paymentAmount > 0 && !amountError && (
+                  <Alert className="bg-blue-900/20 border-blue-800">
+                    <Info className="h-4 w-4" />
+                    <AlertDescription>
+                      You will have a remaining balance of: $
+                      {(selectedBilling.balanceDue - paymentAmount).toFixed(2)}
+                    </AlertDescription>
+                  </Alert>
+                )}
+              </div>
+
+              {/* Stripe Payment Form */}
+              {paymentAmount > 0 && !amountError && (
+                <Elements 
+                  stripe={stripePromise} 
+                  options={{
+                    mode: 'payment',
+                    amount: Math.round(paymentAmount * 100),
+                    currency: 'usd',
+                  }}
+                >
+                  <CheckoutForm 
+                    amount={paymentAmount}
+                    billingId={selectedBilling.id}
+                    onSuccess={handlePaymentSuccess}
+                    onClose={() => setPaymentDialogOpen(false)}
+                    onValidation={validatePaymentAmount}
+                  />
+                </Elements>
+              )}
+            </div>
+          </DialogContent>
+        </Dialog>
+      )}
     </div>
-  )
+  );
 }
+
+const getStatusColor = (status: string) => {
+  switch (status.toLowerCase()) {
+    case "completed": return "bg-green-500/20 text-green-400 border-green-500/30";
+    case "processing": return "bg-blue-500/20 text-blue-400 border-blue-500/30";
+    case "failed": return "bg-red-500/20 text-red-400 border-red-500/30";
+    case "pending": return "bg-yellow-500/20 text-yellow-400 border-yellow-500/30";
+    default: return "bg-slate-500/20 text-slate-400 border-slate-500/30";
+  }
+};

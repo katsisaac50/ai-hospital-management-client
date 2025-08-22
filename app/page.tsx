@@ -255,74 +255,78 @@ if (!stats) {
     <div className={containerClasses}>
       <div className="container mx-auto px-6 py-8">
         {/* Header with User Info */}
-        <div className="flex items-center justify-between mb-8">
-          <div>
-            <div className="flex items-center gap-3 mb-2">
-              <Stethoscope className="w-8 h-8 text-cyan-400" />
-              <h1 className="text-4xl font-bold bg-gradient-to-r from-cyan-400 to-purple-400 bg-clip-text text-transparent">
-                BismillahMedicalCenter
-              </h1>
-              <Badge className="bg-gradient-to-r from-cyan-500/20 to-purple-500/20 border border-cyan-500/30 text-cyan-300">
-                <Brain className="w-3 h-3 mr-1" />
-                AI-Powered
-              </Badge>
-            </div>
-            <p
-              className={cn("transition-colors duration-300", {
-                "text-slate-400": theme === "dark" || theme === "morpho",
-                "text-gray-600": theme === "light",
-              })}
-            >
-              Welcome back,{" "}
-              <span
-                className={cn("font-medium", {
-                  "text-white": theme === "dark" || theme === "morpho",
-                  "text-gray-900": theme === "light",
-                })}
-              >
-                {user.name}
-              </span>
-            </p>
-            <p
-              className={cn("text-sm transition-colors duration-300", {
-                "text-slate-500": theme === "dark" || theme === "morpho",
-                "text-gray-500": theme === "light",
-              })}
-            >
-              Role: {user.role.replace("_", " ")} • Department: {user.department}
-            </p>
-          </div>
-          <div className="flex items-center gap-4">
-            <ThemeSwitcher />
-            <Button
-              variant="outline"
-              onClick={() => setShowProfile(!showProfile)}
-              className={cn("transition-colors duration-300", {
-                "border-slate-600 text-slate-300 hover:bg-slate-700": theme === "dark",
-                "border-gray-300 text-gray-700 hover:bg-gray-100": theme === "light",
-                "glass-button border-white/20 text-white hover:bg-white/10": theme === "morpho",
-              })}
-            >
-              <User className="w-4 h-4 mr-2" />
-              Profile
-            </Button>
-            <RoleBasedAccess requiredPermission="system_settings" showError={false}>
-              <Link href="/integrations">
-                <Button
-                  variant="outline"
-                  className={cn("transition-colors duration-300", {
-                    "border-slate-600 text-slate-300 hover:bg-slate-700": theme === "dark",
-                    "border-gray-300 text-gray-700 hover:bg-gray-100": theme === "light",
-                    "glass-button border-white/20 text-white hover:bg-white/10": theme === "morpho",
-                  })}
-                >
-                  <Settings className="w-4 h-4 mr-2" />
-                  Settings
-                </Button>
-              </Link>
-            </RoleBasedAccess>
-          </div>
-        </div>
+        <div className="flex flex-col md:flex-row items-start md:items-center justify-between mb-8 gap-4">
+  <div className="order-1 md:order-none">
+    <div className="flex flex-col sm:flex-row sm:items-center gap-3 mb-2">
+      <div className="flex items-center gap-3">
+        <Stethoscope className="w-6 h-6 md:w-8 md:h-8 text-cyan-400" />
+        <h1 className="text-2xl sm:text-3xl md:text-4xl font-bold bg-gradient-to-r from-cyan-400 to-purple-400 bg-clip-text text-transparent">
+          BismillahMedicalCenter
+        </h1>
+      </div>
+      <Badge className="w-fit bg-gradient-to-r from-cyan-500/20 to-purple-500/20 border border-cyan-500/30 text-cyan-300">
+        <Brain className="w-3 h-3 mr-1" />
+        AI-Powered
+      </Badge>
+    </div>
+    <p
+      className={cn("transition-colors duration-300", {
+        "text-slate-400": theme === "dark" || theme === "morpho",
+        "text-gray-600": theme === "light",
+      })}
+    >
+      Welcome back,{" "}
+      <span
+        className={cn("font-medium", {
+          "text-white": theme === "dark" || theme === "morpho",
+          "text-gray-900": theme === "light",
+        })}
+      >
+        {user.name}
+      </span>
+    </p>
+    <p
+      className={cn("text-sm transition-colors duration-300", {
+        "text-slate-500": theme === "dark" || theme === "morpho",
+        "text-gray-500": theme === "light",
+      })}
+    >
+      Role: {user.role.replace("_", " ")} • Department: {user.department}
+    </p>
+  </div>
+  <div className="flex flex-wrap items-center gap-2 sm:gap-4 order-2 md:order-none w-full md:w-auto justify-end">
+    <ThemeSwitcher />
+    <Button
+      variant="outline"
+      onClick={() => setShowProfile(!showProfile)}
+      size="sm"
+      className={cn("transition-colors duration-300", {
+        "border-slate-600 text-slate-300 hover:bg-slate-700": theme === "dark",
+        "border-gray-300 text-gray-700 hover:bg-gray-100": theme === "light",
+        "glass-button border-white/20 text-white hover:bg-white/10": theme === "morpho",
+      })}
+    >
+      <User className="w-4 h-4 mr-2" />
+      Profile
+    </Button>
+    <RoleBasedAccess requiredPermission="system_settings" showError={false}>
+      <Link href="/integrations">
+        <Button
+          variant="outline"
+          size="sm"
+          className={cn("transition-colors duration-300", {
+            "border-slate-600 text-slate-300 hover:bg-slate-700": theme === "dark",
+            "border-gray-300 text-gray-700 hover:bg-gray-100": theme === "light",
+            "glass-button border-white/20 text-white hover:bg-white/10": theme === "morpho",
+          })}
+        >
+          <Settings className="w-4 h-4 mr-2" />
+          Settings
+        </Button>
+      </Link>
+    </RoleBasedAccess>
+  </div>
+</div>
 
         {/* User Profile Sidebar */}
         {showProfile && (
