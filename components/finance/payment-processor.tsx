@@ -195,7 +195,7 @@ export function PaymentProcessor() {
   const [error, setError] = useState<string | null>(null);
   const [paymentDialogOpen, setPaymentDialogOpen] = useState(false);
   const [showOutstandingInvoices, setShowOutstandingInvoices] = useState(false);
-
+console.log('render payment processor', payments)
   const fetchData = async () => {
     try {
       setLoading(prev => ({ ...prev, billings: true, payments: true }));
@@ -203,13 +203,13 @@ export function PaymentProcessor() {
       // Fetch billings with outstanding balances
       const billingsRes = await authFetch(`${API_URL}/v1/financial/unpaid`);
       const billingsData = await billingsRes.json();
-      // console.log('fetch bills', billingsData)
+      console.log('fetch bills', billingsData)
       setBillings(billingsData.data);
       
       // Fetch payment history
       const paymentsRes = await authFetch(`${API_URL}/v1/payments`);
       const paymentsData = await paymentsRes.json();
-      // console.log('Fetched payments:', paymentsData);
+      console.log("payments", paymentsData);
       setPayments(paymentsData.data);
       
     } catch (err) {
@@ -392,7 +392,7 @@ export function PaymentProcessor() {
                       <div>
                         <h4 className="font-medium text-white">{payment.paymentId} - {payment.patient.name}</h4>
                         <p className="text-sm text-slate-400">
-                          Invoice: {payment.invoiceNumber} • ${payment.amount.toFixed(2)}
+                          Invoice: {payment.billing.invoiceNumber} • ${payment.amount.toFixed(2)}
                         </p>
                       </div>
                       <Badge className={getStatusColor(payment.status)}>
