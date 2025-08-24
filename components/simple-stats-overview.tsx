@@ -1,5 +1,5 @@
 "use client"
-
+import { useRef } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Progress } from "@/components/ui/progress"
@@ -15,11 +15,14 @@ import {
   Stethoscope,
   Clock,
   AlertCircle,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react"
 import { useDashboardStats } from "@/hooks/useDashboardStats"
 
 export function SimpleStatsOverview() {
   const { theme } = useTheme()
+  const scrollRef = useRef<HTMLDivElement>(null)
 
   const cardClasses = cn("transition-all duration-300", {
     "glass-card": theme === "morpho",
@@ -49,10 +52,32 @@ export function SimpleStatsOverview() {
   // Find max patients for weekly flow chart scaling
   const maxPatients = Math.max(...weeklyData.map(day => day.patients), 10) || 10
 
+  const scrollLeft = () => {
+    scrollRef.current?.scrollBy({ left: -300, behavior: "smooth" })
+  }
+
+  const scrollRight = () => {
+    scrollRef.current?.scrollBy({ left: 300, behavior: "smooth" })
+  }
+
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+    <div className="relative">
+      {/* Scroll buttons */}
+      <button
+    onClick={scrollLeft}
+    className="absolute left-0 top-1/2 -translate-y-1/2 z-10 p-2 rounded-full bg-black/20 hover:bg-black/30 text-white"
+  >
+    <ChevronLeft className="w-5 h-5" />
+  </button>
+  <button
+    onClick={scrollRight}
+    className="absolute right-0 top-1/2 -translate-y-1/2 z-10 p-2 rounded-full bg-black/20 hover:bg-black/30 text-white"
+  >
+    <ChevronRight className="w-5 h-5" />
+  </button>
+    <div ref={scrollRef} className="flex gap-6 overflow-x-auto scrollbar-hide scroll-smooth snap-x pb-6 md:grid md:grid-cols-2 lg:grid-cols-2 md:gap-6 md:overflow-x-visible">
       {/* Weekly Patient Flow Chart */}
-      <Card className={cardClasses}>
+      <Card className={cn(cardClasses, "min-w-[90%] md:min-w-0 flex-shrink-0 snap-center")}>
         <CardHeader>
           <CardTitle className={cn("flex items-center gap-2", textClasses)}>
             <TrendingUp className="w-5 h-5 text-cyan-400" />
@@ -97,7 +122,7 @@ export function SimpleStatsOverview() {
       </Card>
 
       {/* Department Distribution */}
-      <Card className={cardClasses}>
+      < Card className={cn(cardClasses, "min-w-[90%] md:min-w-0 flex-shrink-0 snap-center")}>
         <CardHeader>
           <CardTitle className={cn("flex items-center gap-2", textClasses)}>
             <Stethoscope className="w-5 h-5 text-purple-400" />
@@ -142,7 +167,7 @@ export function SimpleStatsOverview() {
       </Card>
 
       {/* Real-time Metrics */}
-      <Card className={cardClasses}>
+      <Card className={cn(cardClasses, "min-w-[90%] md:min-w-0 flex-shrink-0 snap-center")}>
         <CardHeader>
           <CardTitle className={cn("flex items-center gap-2", textClasses)}>
             <Activity className="w-5 h-5 text-green-400" />
@@ -217,7 +242,7 @@ export function SimpleStatsOverview() {
       </Card>
 
       {/* System Summary */}
-      <Card className={cardClasses}>
+      <Card className={cn(cardClasses, "min-w-[300px] flex-shrink-0 snap-center")}>
         <CardHeader>
           <CardTitle className={cn("flex items-center gap-2", textClasses)}>
             <AlertCircle className="w-5 h-5 text-orange-400" />
@@ -262,7 +287,7 @@ export function SimpleStatsOverview() {
         </CardContent>
       </Card>
       {/* System Alerts */}
-      <Card className={cardClasses}>
+      <Card className={cn(cardClasses, "min-w-[300px] flex-shrink-0 snap-center")}>
         <CardHeader>
           <CardTitle className={cn("flex items-center gap-2", textClasses)}>
             <AlertCircle className="w-5 h-5 text-orange-400" />
@@ -300,6 +325,7 @@ export function SimpleStatsOverview() {
           </div>
         </CardContent>
       </Card>
+    </div>
     </div>
   )
 }

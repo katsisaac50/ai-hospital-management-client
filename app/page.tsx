@@ -390,9 +390,10 @@ if (!stats) {
 </RoleBasedAccess>
 
         {/* Quick Stats Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+        <div className="flex gap-6 overflow-x-auto scrollbar-hide scroll-smooth-x snap-x pb-4
+                md:grid md:grid-cols-2 lg:grid-cols-4 md:gap-6 md:overflow-x-visible">
           <RoleBasedAccess requiredPermission="view_patients" showError={false}>
-            <Card className={cardClasses}>
+            <Card className={cn(cardClasses, "min-w-[250px] flex-shrink-0 snap-center")}>
               <CardContent className="p-6">
                 <div className="flex items-center justify-between">
                   <div>
@@ -445,7 +446,7 @@ if (!stats) {
           </RoleBasedAccess>
 
           <RoleBasedAccess requiredPermission="view_appointments" showError={false}>
-            <Card className={cardClasses}>
+            <Card className={cn(cardClasses, "min-w-[250px] flex-shrink-0 snap-center")}>
               <CardContent className="p-6">
                 <div className="flex items-center justify-between">
                   <div>
@@ -474,7 +475,7 @@ if (!stats) {
           </RoleBasedAccess>
 
           <RoleBasedAccess requiredPermission="view_analytics" showError={false}>
-            <Card className={cardClasses}>
+            <Card className={cn(cardClasses, "min-w-[250px] flex-shrink-0 snap-center")}>
               <CardContent className="p-6">
                 <div className="flex items-center justify-between">
                   <div>
@@ -503,7 +504,7 @@ if (!stats) {
           </RoleBasedAccess>
 
           <RoleBasedAccess requiredPermission="view_financial" showError={false}>
-            <Card className={cardClasses}>
+            <Card className={cn(cardClasses, "min-w-[250px] flex-shrink-0 snap-center")}>
               <CardContent className="p-6">
                 <div className="flex items-center justify-between">
                   <div>
@@ -542,6 +543,7 @@ if (!stats) {
         </div>
 
         {/* System Status - Emergency Access */}
+       
         <RoleBasedAccess requiredPermission="emergency_access" showError={false}>
           <Card className={cn(cardClasses, "mb-8")}>
             <CardHeader>
