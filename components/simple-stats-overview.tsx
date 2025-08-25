@@ -1,28 +1,40 @@
 "use client"
-import { useRef } from "react"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Badge } from "@/components/ui/badge"
-import { Progress } from "@/components/ui/progress"
-import { useTheme } from "@/components/theme-provider"
-import { cn } from "@/lib/utils"
+
+import { useRef, useState, useEffect, useCallback } from "react"
 import {
-  TrendingUp,
   TrendingDown,
+  ChevronLeft,
+  ChevronRight,
+  TrendingUp,
+  Stethoscope,
   Users,
   DollarSign,
   Activity,
   Heart,
-  Stethoscope,
   Clock,
   AlertCircle,
-  ChevronLeft,
-  ChevronRight,
+  Server,
 } from "lucide-react"
+import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card"
+import { Badge } from "@/components/ui/badge"
+import { Progress } from "@/components/ui/progress"
+import { cn } from "@/lib/utils"
+import { useTheme } from "@/components/theme-provider"
 import { useDashboardStats } from "@/hooks/useDashboardStats"
 
 export function SimpleStatsOverview() {
   const { theme } = useTheme()
   const scrollRef = useRef<HTMLDivElement>(null)
+  const [activeIndex, setActiveIndex] = useState(1)
+  const [paused, setPaused] = useState(false)
+  const [touchData, setTouchData] = useState<{ x: number | null; time: number }>({ x: null, time: 0 })
+
+  const { data: stats, isLoading, error } = useDashboardStats()
+
+  const weeklyData = stats?.weeklyFlow || []
+  const departments = stats?.departmentStats || []
+  const metrics = stats?.realTime || {}
+  const maxPatients = weeklyData.length ? Math.max(...weeklyData.map(d => d.patients)) : 10
 
   const cardClasses = cn("transition-all duration-300", {
     "glass-card": theme === "morpho",
@@ -40,292 +52,334 @@ export function SimpleStatsOverview() {
     "text-gray-600": theme === "light",
   })
 
-  const { data: stats, isLoading, error } = useDashboardStats()
+  // Small subcomponents
+  const WeeklyFlowCard = () => (
+    <div className="space-y-4">
+      {weeklyData.map((day, idx) => (
+        <div key={idx} className="flex items-center gap-4">
+          <div className="w-12 text-sm font-medium text-cyan-400">{day.day}</div>
+          <div className="flex-1 space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="text-sm text-gray-500">Patients</span>
+              <span className="text-sm font-medium text-gray-900">{day.patients}</span>
+            </div>
+            <div className="w-full bg-slate-200 rounded-full h-2">
+              <div
+                className="bg-gradient-to-r from-cyan-500 to-blue-500 h-2 rounded-full transition-all duration-500"
+                style={{ width: `${(day.patients / maxPatients) * 100}%` }}
+              />
+            </div>
+          </div>
+        </div>
+      ))}
+    </div>
+  )
+
+  const DepartmentCard = () => (
+    <div className="space-y-4">
+      {departments.map((dept) => (
+        <div key={dept.name} className="space-y-2">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <div className={`w-3 h-3 rounded-full ${dept.color}`} />
+              <span className="text-sm font-medium text-gray-900">
+                {dept.name.charAt(0).toUpperCase() + dept.name.slice(1)}
+              </span>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-gray-500">{dept.doctors} doctors</span>
+              <span className="text-sm font-medium text-gray-900">{dept.percentage}%</span>
+            </div>
+          </div>
+          <Progress value={dept.percentage} className="h-2" />
+        </div>
+      ))}
+    </div>
+  )
+
+  const RealTimeCard = () => (
+    <div className="grid grid-cols-2 gap-4">
+      {[
+        {
+          label: "Avg Wait Time",
+          value: metrics?.avgWaitTime,
+          change: metrics?.waitTimeChange,
+          icon: <Clock className="w-4 h-4 text-blue-400" />,
+          unit: "min",
+          positiveUp: true,
+        },
+        {
+          label: "Queue Length",
+          value: metrics?.queueLength,
+          change: metrics?.queueChange,
+          icon: <Users className="w-4 h-4 text-cyan-400" />,
+          positiveUp: true,
+        },
+        {
+          label: "Critical Cases",
+          value: metrics?.criticalCases,
+          icon: <Heart className="w-4 h-4 text-red-400" />,
+          badge: <Badge className="bg-red-500/20 text-red-400 border-red-500/30 text-xs">Immediate Attention</Badge>,
+        },
+        {
+          label: "Today's Revenue",
+          value: metrics?.revenueToday ? (metrics.revenueToday / 1000).toFixed(1) : "0",
+          change: metrics?.revenueChange,
+          icon: <DollarSign className="w-4 h-4 text-green-400" />,
+          unit: "K",
+          positiveUp: false,
+        },
+      ].map((item, idx) => (
+        <div key={idx} className="space-y-2">
+          <div className="flex items-center gap-2">
+            {item.icon}
+            <span className={cn("text-sm", mutedTextClasses)}>{item.label}</span>
+          </div>
+          <div className={cn("text-2xl font-bold", textClasses)}>
+            {item.value} {item.unit || ""}
+          </div>
+          {item.change !== undefined && (
+            <div
+              className={`flex items-center gap-1 text-sm ${
+                (item.positiveUp ? item.change >= 0 : item.change < 0) ? "text-red-400" : "text-green-400"
+              }`}
+            >
+              {(item.positiveUp ? item.change >= 0 : item.change < 0) ? (
+                <TrendingUp className="w-3 h-3" />
+              ) : (
+                <TrendingDown className="w-3 h-3" />
+              )}
+              {item.change >= 0 ? "+" : ""}
+              {item.change}% from yesterday
+            </div>
+          )}
+          {item.badge && item.badge}
+        </div>
+      ))}
+    </div>
+  )
+
+  const SystemSummaryCard = () => (
+    <div className="space-y-4">
+      {[
+        {
+          label: "New Patients Today",
+          value: metrics?.newPatientsToday,
+          icon: <Users className="w-5 h-5 text-green-400" />,
+          badge: <Badge className="bg-green-500/20 text-green-400 border-green-500/30">Today</Badge>,
+          bg: "bg-green-500/10",
+          border: "border-green-500/20",
+        },
+        {
+          label: "New Doctors This Month",
+          value: metrics?.newDoctorsThisMonth,
+          icon: <Stethoscope className="w-5 h-5 text-blue-400" />,
+          badge: <Badge className="bg-blue-500/20 text-blue-400 border-blue-500/30">Monthly</Badge>,
+          bg: "bg-blue-500/10",
+          border: "border-blue-500/20",
+        },
+        {
+          label: "Active Patients",
+          value: metrics?.totalActivePatients,
+          icon: <Heart className="w-5 h-5 text-purple-400" />,
+          badge: <Badge className="bg-purple-500/20 text-purple-400 border-purple-500/30">Current</Badge>,
+          bg: "bg-purple-500/10",
+          border: "border-purple-500/20",
+        },
+      ].map((item, idx) => (
+        <div key={idx} className={`flex items-center justify-between p-3 rounded-lg ${item.bg} border ${item.border}`}>
+          <div className="flex items-center gap-3">
+            {item.icon}
+            <div>
+              <div className={cn("text-sm", mutedTextClasses)}>{item.label}</div>
+              <div className={cn("text-lg font-bold", textClasses)}>{item.value}</div>
+            </div>
+          </div>
+          {item.badge}
+        </div>
+      ))}
+    </div>
+  )
+
+  const SystemAlertsCard = () => (
+    <div className="space-y-3">
+      {[
+        {
+          title: "Equipment Maintenance Due",
+          description: "MRI Machine #2 - Scheduled for tomorrow",
+          level: "high",
+          bg: "bg-red-500/20",
+          color: "text-red-400",
+          border: "border-red-500/30",
+        },
+        {
+          title: "Low Medication Stock",
+          description: "Insulin supplies running low - 3 days remaining",
+          level: "Medium",
+          bg: "bg-yellow-500/20",
+          color: "text-yellow-400",
+          border: "border-yellow-500/30",
+        },
+        {
+          title: "System Update Available",
+          description: "New features and security patches ready",
+          level: "Info",
+          bg: "bg-blue-500/20",
+          color: "text-blue-400",
+          border: "border-blue-500/30",
+        },
+      ].map((alert, idx) => (
+        <div
+          key={idx}
+          className={`flex items-start gap-3 p-3 rounded-lg ${alert.bg} border ${alert.border}`}
+        >
+          <AlertCircle className="w-4 h-4 mt-0.5" />
+          <div className="flex-1">
+            <div className={cn("text-sm font-medium", textClasses)}>{alert.title}</div>
+            <div className={cn("text-xs", mutedTextClasses)}>{alert.description}</div>
+          </div>
+          <Badge className={`bg-${alert.color}/20 text-${alert.color}-400 border-${alert.color}/30 text-xs`}>{alert.level}</Badge>
+        </div>
+      ))}
+    </div>
+  )
+
+  const cards = [
+    { title: "Weekly Patient Flow", icon: <TrendingUp className="w-5 h-5 text-cyan-400" />, content: <WeeklyFlowCard /> },
+    { title: "Department Distribution", icon: <Stethoscope className="w-5 h-5 text-purple-400" />, content: <DepartmentCard /> },
+    { title: "Real-time Metrics", icon: <Activity className="w-5 h-5 text-green-400" />, content: <RealTimeCard /> },
+    { title: "System Summary", icon: <Server className="w-5 h-5 text-orange-400" />, content: <SystemSummaryCard /> },
+    { title: "System Alerts", icon: <AlertCircle className="w-5 h-5 text-red-400" />, content: <SystemAlertsCard /> },
+  ]
+
+  // Infinite loop setup
+  const extendedCards = [cards[cards.length - 1], ...cards, cards[0]]
+
+  const scrollToCard = useCallback(
+    (index: number, smooth = true) => {
+      if (!scrollRef.current) return
+      const card = scrollRef.current.children[index] as HTMLDivElement
+      if (!card) return
+      scrollRef.current.scrollTo({ left: card.offsetLeft, behavior: smooth ? "smooth" : "auto" })
+      setActiveIndex(index)
+    },
+    []
+  )
+
+  // Auto-slide
+  useEffect(() => {
+    if (paused) return
+    const interval = setInterval(() => {
+      setActiveIndex(prev => prev + 1)
+    }, 4000)
+    return () => clearInterval(interval)
+  }, [paused])
+
+  // Loop handling - Fixed implementation
+  useEffect(() => {
+    if (activeIndex === 0) {
+      // Jump to the last real card without animation
+      scrollToCard(cards.length, false)
+    } else if (activeIndex === extendedCards.length - 1) {
+      // Jump to the first real card without animation
+      scrollToCard(1, false)
+    } else {
+      // Normal scroll with animation
+      scrollToCard(activeIndex)
+    }
+  }, [activeIndex, scrollToCard, cards.length, extendedCards.length])
+
+  const goLeft = () => setActiveIndex(prev => Math.max(prev - 1, 0))
+  const goRight = () => setActiveIndex(prev => Math.min(prev + 1, extendedCards.length - 1))
+
+  // Swipe
+  const handleTouchStart = (e: React.TouchEvent) => {
+    setTouchData({ x: e.changedTouches[0].screenX, time: Date.now() })
+    setPaused(true)
+  }
+
+  const handleTouchMove = (e: React.TouchEvent) => {
+    if (!scrollRef.current || touchData.x === null) return
+    const deltaX = touchData.x - e.changedTouches[0].screenX
+    scrollRef.current.scrollLeft += deltaX
+    setTouchData({ x: e.changedTouches[0].screenX, time: touchData.time })
+  }
+
+  const handleTouchEnd = (e: React.TouchEvent) => {
+    if (!scrollRef.current || touchData.x === null) return
+    const deltaX = touchData.x - e.changedTouches[0].screenX
+    const deltaTime = Date.now() - touchData.time
+    const velocity = deltaX / deltaTime
+    let newIndex = activeIndex
+
+    if (Math.abs(deltaX) > scrollRef.current.offsetWidth / 3 || Math.abs(velocity) > 0.3) {
+      newIndex = deltaX > 0 ? activeIndex + 1 : activeIndex - 1
+    }
+
+    setActiveIndex(newIndex)
+    setTouchData({ x: null, time: 0 })
+    setPaused(false)
+  }
 
   if (isLoading) return <div>Loading...</div>
   if (error) return <div>Failed to load dashboard</div>
 
-  const weeklyData = stats?.weeklyFlow || []
-  const departments = stats?.departmentStats || []
-  const metrics = stats?.realTime || {}
-
-  // Find max patients for weekly flow chart scaling
-  const maxPatients = Math.max(...weeklyData.map(day => day.patients), 10) || 10
-
-  const scrollLeft = () => {
-    scrollRef.current?.scrollBy({ left: -300, behavior: "smooth" })
-  }
-
-  const scrollRight = () => {
-    scrollRef.current?.scrollBy({ left: 300, behavior: "smooth" })
-  }
-
   return (
     <div className="relative">
-      {/* Scroll buttons */}
+      {/* Arrows */}
       <button
-    onClick={scrollLeft}
-    className="absolute left-0 top-1/2 -translate-y-1/2 z-10 p-2 rounded-full bg-black/20 hover:bg-black/30 text-white"
-  >
-    <ChevronLeft className="w-5 h-5" />
-  </button>
-  <button
-    onClick={scrollRight}
-    className="absolute right-0 top-1/2 -translate-y-1/2 z-10 p-2 rounded-full bg-black/20 hover:bg-black/30 text-white"
-  >
-    <ChevronRight className="w-5 h-5" />
-  </button>
-    <div ref={scrollRef} className="flex gap-6 overflow-x-auto scrollbar-hide scroll-smooth snap-x pb-6 md:grid md:grid-cols-2 lg:grid-cols-2 md:gap-6 md:overflow-x-visible">
-      {/* Weekly Patient Flow Chart */}
-      <Card className={cn(cardClasses, "min-w-[90%] md:min-w-0 flex-shrink-0 snap-center")}>
-        <CardHeader>
-          <CardTitle className={cn("flex items-center gap-2", textClasses)}>
-            <TrendingUp className="w-5 h-5 text-cyan-400" />
-            Weekly Patient Flow
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-4">
-            {weeklyData.map((day, index) => (
-              <div key={`${day.day}-${index}`} className="flex items-center gap-4">
-                <div className="w-12 text-sm font-medium text-cyan-400">{day.day}</div>
-                <div className="flex-1 space-y-2">
-                  <div className="flex items-center justify-between">
-                    <span className={cn("text-sm", mutedTextClasses)}>Patients</span>
-                    <span className={cn("text-sm font-medium", textClasses)}>{day.patients}</span>
-                  </div>
-                  <div className="w-full bg-slate-700 rounded-full h-2">
-                    <div
-                      className="bg-gradient-to-r from-cyan-500 to-blue-500 h-2 rounded-full transition-all duration-500"
-                      style={{ width: `${(day.patients / maxPatients) * 100}%` }}
-                    />
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-          <div className="mt-4 flex items-center gap-4 text-sm">
-            <div className="flex items-center gap-2">
-              {stats?.weeklyChange >= 0 ? (
-                <TrendingUp className="w-4 h-4 text-green-400" />
-              ) : (
-                <TrendingDown className="w-4 h-4 text-red-400" />
-              )}
-              <span className={stats?.weeklyChange >= 0 ? "text-green-400" : "text-red-400"}>
-                {stats?.weeklyChange >= 0 ? "+" : ""}
-                {stats?.weeklyChange}% vs last week
-              </span>
-            </div>
-            <Badge className="bg-cyan-500/20 text-cyan-400 border-cyan-500/30">Peak: {stats?.peakDay}</Badge>
-          </div>
-        </CardContent>
-      </Card>
+        aria-label="Scroll Left"
+        onClick={goLeft}
+        className="absolute left-2 top-1/2 -translate-y-1/2 z-10 p-2 rounded-full bg-black/20 hover:bg-black/40 text-white"
+      >
+        <ChevronLeft className="w-5 h-5" />
+      </button>
+      <button
+        aria-label="Scroll Right"
+        onClick={goRight}
+        className="absolute right-2 top-1/2 -translate-y-1/2 z-10 p-2 rounded-full bg-black/20 hover:bg-black/40 text-white"
+      >
+        <ChevronRight className="w-5 h-5" />
+      </button>
 
-      {/* Department Distribution */}
-      < Card className={cn(cardClasses, "min-w-[90%] md:min-w-0 flex-shrink-0 snap-center")}>
-        <CardHeader>
-          <CardTitle className={cn("flex items-center gap-2", textClasses)}>
-            <Stethoscope className="w-5 h-5 text-purple-400" />
-            Department Distribution
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-4">
-            {departments.map((dept) => (
-              <div key={dept.name} className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <div className={`w-3 h-3 rounded-full ${dept.color}`} />
-                    <span className={cn("text-sm font-medium", textClasses)}>
-                      {dept.name.charAt(0).toUpperCase() + dept.name.slice(1)}
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <span className={cn("text-sm", mutedTextClasses)}>{dept.doctors} doctors</span>
-                    <span className={cn("text-sm font-medium", textClasses)}>{dept.percentage}%</span>
-                  </div>
-                </div>
-                <Progress value={dept.percentage} className="h-2" />
-              </div>
-            ))}
-          </div>
-          <div className="mt-4 p-3 rounded-lg bg-gradient-to-r from-purple-500/10 to-blue-500/10 border border-purple-500/20">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2 text-sm">
-                <Users className="w-4 h-4 text-purple-400" />
-                <span className={textClasses}>Total Patients: </span>
-                <span className="text-purple-400 font-semibold">{metrics?.totalPatients}</span>
-              </div>
-              <div className="flex items-center gap-2 text-sm">
-                <Stethoscope className="w-4 h-4 text-blue-400" />
-                <span className={textClasses}>Total Doctors: </span>
-                <span className="text-blue-400 font-semibold">{metrics?.totalDoctors}</span>
-              </div>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
+      {/* Carousel */}
+      <div
+        ref={scrollRef}
+        className="flex gap-6 overflow-x-auto snap-x snap-mandatory scroll-smooth pb-6 scrollbar-hide"
+        onMouseEnter={() => setPaused(true)}
+        onMouseLeave={() => setPaused(false)}
+        onTouchStart={handleTouchStart}
+        onTouchMove={handleTouchMove}
+        onTouchEnd={handleTouchEnd}
+      >
+        {extendedCards.map((card, idx) => (
+          <Card
+            key={idx}
+            className={cn(cardClasses, "min-w-[90%] md:min-w-[45%] lg:min-w-[30%] flex-shrink-0 snap-center shadow-xl")}
+          >
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">{card.icon} {card.title}</CardTitle>
+            </CardHeader>
+            <CardContent>{card.content}</CardContent>
+          </Card>
+        ))}
+      </div>
 
-      {/* Real-time Metrics */}
-      <Card className={cn(cardClasses, "min-w-[90%] md:min-w-0 flex-shrink-0 snap-center")}>
-        <CardHeader>
-          <CardTitle className={cn("flex items-center gap-2", textClasses)}>
-            <Activity className="w-5 h-5 text-green-400" />
-            Real-time Metrics
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <div className="flex items-center gap-2">
-                <Clock className="w-4 h-4 text-blue-400" />
-                <span className={cn("text-sm", mutedTextClasses)}>Avg Wait Time</span>
-              </div>
-              <div className={cn("text-2xl font-bold", textClasses)}>{metrics?.avgWaitTime} min</div>
-              <div className={`flex items-center gap-1 text-sm ${metrics?.waitTimeChange >= 0 ? 'text-red-400' : 'text-green-400'}`}>
-                {metrics?.waitTimeChange >= 0 ? (
-                  <TrendingUp className="w-3 h-3" />
-                ) : (
-                  <TrendingDown className="w-3 h-3" />
-                )}
-                {metrics?.waitTimeChange >= 0 ? "+" : ""}
-                {metrics?.waitTimeChange}% from yesterday
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <div className="flex items-center gap-2">
-                <Users className="w-4 h-4 text-cyan-400" />
-                <span className={cn("text-sm", mutedTextClasses)}>Queue Length</span>
-              </div>
-              <div className={cn("text-2xl font-bold", textClasses)}>{metrics?.queueLength}</div>
-              <div className={`flex items-center gap-1 text-sm ${metrics?.queueChange >= 0 ? 'text-yellow-400' : 'text-green-400'}`}>
-                {metrics?.queueChange >= 0 ? (
-                  <TrendingUp className="w-3 h-3" />
-                ) : (
-                  <TrendingDown className="w-3 h-3" />
-                )}
-                {metrics?.queueChange >= 0 ? "+" : ""}
-                {metrics?.queueChange}% from yesterday
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <div className="flex items-center gap-2">
-                <Heart className="w-4 h-4 text-red-400" />
-                <span className={cn("text-sm", mutedTextClasses)}>Critical Cases</span>
-              </div>
-              <div className={cn("text-2xl font-bold", textClasses)}>{metrics?.criticalCases}</div>
-              <Badge className="bg-red-500/20 text-red-400 border-red-500/30 text-xs">Immediate Attention</Badge>
-            </div>
-
-            <div className="space-y-2">
-              <div className="flex items-center gap-2">
-                <DollarSign className="w-4 h-4 text-green-400" />
-                <span className={cn("text-sm", mutedTextClasses)}>Today's Revenue</span>
-              </div>
-              <div className={cn("text-2xl font-bold", textClasses)}>
-                ${(metrics?.revenueToday / 1000).toFixed(1)}K
-              </div>
-              <div className={`flex items-center gap-1 text-sm ${metrics?.revenueChange >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                {metrics?.revenueChange >= 0 ? (
-                  <TrendingUp className="w-3 h-3" />
-                ) : (
-                  <TrendingDown className="w-3 h-3" />
-                )}
-                {metrics?.revenueChange >= 0 ? "+" : ""}
-                {metrics?.revenueChange}% vs yesterday
-              </div>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* System Summary */}
-      <Card className={cn(cardClasses, "min-w-[300px] flex-shrink-0 snap-center")}>
-        <CardHeader>
-          <CardTitle className={cn("flex items-center gap-2", textClasses)}>
-            <AlertCircle className="w-5 h-5 text-orange-400" />
-            System Summary
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-4">
-            <div className="flex items-center justify-between p-3 rounded-lg bg-green-500/10 border border-green-500/20">
-              <div className="flex items-center gap-3">
-                <Users className="w-5 h-5 text-green-400" />
-                <div>
-                  <div className={cn("text-sm", mutedTextClasses)}>New Patients Today</div>
-                  <div className={cn("text-lg font-bold", textClasses)}>{metrics?.newPatientsToday}</div>
-                </div>
-              </div>
-              <Badge className="bg-green-500/20 text-green-400 border-green-500/30">Today</Badge>
-            </div>
-
-            <div className="flex items-center justify-between p-3 rounded-lg bg-blue-500/10 border border-blue-500/20">
-              <div className="flex items-center gap-3">
-                <Stethoscope className="w-5 h-5 text-blue-400" />
-                <div>
-                  <div className={cn("text-sm", mutedTextClasses)}>New Doctors This Month</div>
-                  <div className={cn("text-lg font-bold", textClasses)}>{metrics?.newDoctorsThisMonth}</div>
-                </div>
-              </div>
-              <Badge className="bg-blue-500/20 text-blue-400 border-blue-500/30">Monthly</Badge>
-            </div>
-
-            <div className="flex items-center justify-between p-3 rounded-lg bg-purple-500/10 border border-purple-500/20">
-              <div className="flex items-center gap-3">
-                <Heart className="w-5 h-5 text-purple-400" />
-                <div>
-                  <div className={cn("text-sm", mutedTextClasses)}>Active Patients</div>
-                  <div className={cn("text-lg font-bold", textClasses)}>{metrics?.totalActivePatients}</div>
-                </div>
-              </div>
-              <Badge className="bg-purple-500/20 text-purple-400 border-purple-500/30">Current</Badge>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-      {/* System Alerts */}
-      <Card className={cn(cardClasses, "min-w-[300px] flex-shrink-0 snap-center")}>
-        <CardHeader>
-          <CardTitle className={cn("flex items-center gap-2", textClasses)}>
-            <AlertCircle className="w-5 h-5 text-orange-400" />
-            System Alerts
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-3">
-            <div className="flex items-start gap-3 p-3 rounded-lg bg-red-500/10 border border-red-500/20">
-              <AlertCircle className="w-4 h-4 text-red-400 mt-0.5" />
-              <div className="flex-1">
-                <div className={cn("text-sm font-medium", textClasses)}>Equipment Maintenance Due</div>
-                <div className={cn("text-xs", mutedTextClasses)}>MRI Machine #2 - Scheduled for tomorrow</div>
-              </div>
-              <Badge className="bg-red-500/20 text-red-400 border-red-500/30 text-xs">High</Badge>
-            </div>
-
-            <div className="flex items-start gap-3 p-3 rounded-lg bg-yellow-500/10 border border-yellow-500/20">
-              <AlertCircle className="w-4 h-4 text-yellow-400 mt-0.5" />
-              <div className="flex-1">
-                <div className={cn("text-sm font-medium", textClasses)}>Low Medication Stock</div>
-                <div className={cn("text-xs", mutedTextClasses)}>Insulin supplies running low - 3 days remaining</div>
-              </div>
-              <Badge className="bg-yellow-500/20 text-yellow-400 border-yellow-500/30 text-xs">Medium</Badge>
-            </div>
-
-            <div className="flex items-start gap-3 p-3 rounded-lg bg-blue-500/10 border border-blue-500/20">
-              <AlertCircle className="w-4 h-4 text-blue-400 mt-0.5" />
-              <div className="flex-1">
-                <div className={cn("text-sm font-medium", textClasses)}>System Update Available</div>
-                <div className={cn("text-xs", mutedTextClasses)}>New features and security patches ready</div>
-              </div>
-              <Badge className="bg-blue-500/20 text-blue-400 border-blue-500/30 text-xs">Info</Badge>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-    </div>
+      {/* Dot indicators */}
+      <div className="flex justify-center mt-2 gap-2">
+        {cards.map((_, idx) => (
+          <span
+            key={idx}
+            className={cn(
+              "w-2 h-2 rounded-full transition-colors",
+              // Map the extended index back to the real index
+              (activeIndex === 0 ? cards.length - 1 : 
+               activeIndex === extendedCards.length - 1 ? 0 : 
+               activeIndex - 1) === idx ? "bg-gray-900" : "bg-gray-400"
+            )}
+          />
+        ))}
+      </div>
     </div>
   )
 }
