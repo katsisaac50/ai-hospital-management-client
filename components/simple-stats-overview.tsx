@@ -54,16 +54,17 @@ export function SimpleStatsOverview() {
 
   // Small subcomponents
   const WeeklyFlowCard = () => (
+    <>
     <div className="space-y-4">
-      {weeklyData.map((day, idx) => (
-        <div key={idx} className="flex items-center gap-4">
+      {weeklyData.map((day, index) => (
+        <div key={`${day.day}-${index}`} className="flex items-center gap-4">
           <div className="w-12 text-sm font-medium text-cyan-400">{day.day}</div>
           <div className="flex-1 space-y-2">
             <div className="flex items-center justify-between">
-              <span className="text-sm text-gray-500">Patients</span>
-              <span className="text-sm font-medium text-gray-900">{day.patients}</span>
+              <span className={cn("text-sm", mutedTextClasses)}>Patients</span>
+              <span className={cn("text-sm font-medium", textClasses)}>{day.patients}</span>
             </div>
-            <div className="w-full bg-slate-200 rounded-full h-2">
+            <div className="w-full bg-slate-700 rounded-full h-2">
               <div
                 className="bg-gradient-to-r from-cyan-500 to-blue-500 h-2 rounded-full transition-all duration-500"
                 style={{ width: `${(day.patients / maxPatients) * 100}%` }}
@@ -73,28 +74,59 @@ export function SimpleStatsOverview() {
         </div>
       ))}
     </div>
+    <div className="mt-4 flex items-center gap-4 text-sm">
+      <div className="flex items-center gap-2">
+        {stats?.weeklyChange >= 0 ? (
+          <TrendingUp className="w-4 h-4 text-green-400" />
+        ) : (
+          <TrendingDown className="w-4 h-4 text-red-400" />
+        )}
+        <span className={stats?.weeklyChange >= 0 ? "text-green-400" : "text-red-400"}>
+          {stats?.weeklyChange >= 0 ? "+" : ""}
+          {stats?.weeklyChange}% vs last week
+        </span>
+      </div>
+      <Badge className="bg-cyan-500/20 text-cyan-400 border-cyan-500/30">Peak: {stats?.peakDay}</Badge>
+    </div>
+    </>
   )
 
   const DepartmentCard = () => (
+    <>
     <div className="space-y-4">
       {departments.map((dept) => (
-        <div key={dept.name} className="space-y-2">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <div className={`w-3 h-3 rounded-full ${dept.color}`} />
-              <span className="text-sm font-medium text-gray-900">
-                {dept.name.charAt(0).toUpperCase() + dept.name.slice(1)}
-              </span>
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="text-sm text-gray-500">{dept.doctors} doctors</span>
-              <span className="text-sm font-medium text-gray-900">{dept.percentage}%</span>
-            </div>
-          </div>
-          <Progress value={dept.percentage} className="h-2" />
-        </div>
-      ))}
+              <div key={dept.name} className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <div className={`w-3 h-3 rounded-full ${dept.color}`} />
+                    <span className={cn("text-sm font-medium", textClasses)}>
+                      {dept.name.charAt(0).toUpperCase() + dept.name.slice(1)}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className={cn("text-sm", mutedTextClasses)}>{dept.doctors} doctors</span>
+                    <span className={cn("text-sm font-medium", textClasses)}>{dept.percentage}%</span>
+                  </div>
+                </div>
+                <Progress value={dept.percentage} className="h-2" />
+              </div>
+            ))}
     </div>
+    <div className="mt-4 p-3 rounded-lg bg-gradient-to-r from-purple-500/10 to-blue-500/10 border border-purple-500/20">
+    <div className="flex items-center justify-between">
+      <div className="flex items-center gap-2 text-sm">
+        <Users className="w-4 h-4 text-purple-400" />
+        <span className={textClasses}>Total Patients: </span>
+        <span className="text-purple-400 font-semibold">{metrics?.totalPatients}</span>
+      </div>
+      <div className="flex items-center gap-2 text-sm">
+        <Stethoscope className="w-4 h-4 text-blue-400" />
+        <span className={textClasses}>Total Doctors: </span>
+        <span className="text-blue-400 font-semibold">{metrics?.totalDoctors}</span>
+      </div>
+    </div>
+  </div>
+  </>
   )
 
   const RealTimeCard = () => (
@@ -366,7 +398,7 @@ export function SimpleStatsOverview() {
       </div>
 
       {/* Dot indicators */}
-      <div className="flex justify-center mt-2 gap-2">
+      <div className="flex justify-center mt-6 gap-2">
         {cards.map((_, idx) => (
           <span
             key={idx}

@@ -12,11 +12,19 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
+  DialogDescription,
 } from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { loadStripe } from "@stripe/stripe-js";
 import { Elements, useStripe, useElements, PaymentElement } from "@stripe/react-stripe-js";
 import { authFetch } from '@/lib/api'
-import { AlertCircle, Info } from "lucide-react";
+import { AlertCircle, Info, CreditCard, DollarSign, Smartphone, QrCode } from "lucide-react";
 
 const API_URL = process.env.NEXT_PUBLIC_API_BASE_URL; 
 const stripePromise = loadStripe(process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY!);
@@ -50,9 +58,14 @@ type Payment = {
 };
 
 interface UpdateBackendPaymentStatusParams {
-  paymentIntentId: string;
-  amount?: number;
+  paymentIntentId?: string;
+  amount: number;
+  method: string;
+  transactionId?: string;
 }
+
+// Payment method types
+type PaymentMethod = 'card' | 'cash' | 'mobilepay' | 'applepay' | 'googlepay' | 'bank_transfer';
 
 const CheckoutForm = ({ 
   amount, 
@@ -71,7 +84,6 @@ const CheckoutForm = ({
   const elements = useElements();
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-  const [errorStripe, setErrorStripe] = useState("");
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -117,13 +129,16 @@ const CheckoutForm = ({
       });
 
       if (stripeError) {
-        setErrorStripe(stripeError.message ?? "An unknown error occurred");
         throw stripeError;
       }
 
       // Handle successful payment
       if (paymentIntent?.status === 'succeeded') {
-        await updateBackendPaymentStatus(paymentIntent.id, amount);
+        await updateBackendPaymentStatus({
+          paymentIntentId: paymentIntent.id,
+          amount,
+          method: 'card'
+        });
         onSuccess();
         onClose();
       } else {
@@ -132,21 +147,18 @@ const CheckoutForm = ({
 
     } catch (err) {
       console.error('Payment error:', err);
-      setError(err instanceof Error ? err.message : `Payment failed: ${errorStripe}`);
+      setError(err instanceof Error ? err.message : 'Payment failed');
     } finally {
       setLoading(false);
     }
   };
 
-  // Update backend payment status with amount
-  const updateBackendPaymentStatus = async (paymentIntentId: string, paidAmount: number): Promise<void> => {
+  // Update backend payment status
+  const updateBackendPaymentStatus = async (params: UpdateBackendPaymentStatusParams): Promise<void> => {
     const response: Response = await authFetch(`${API_URL}/v1/payments/verify-payment`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ 
-        paymentIntentId,
-        amount: paidAmount 
-      } as UpdateBackendPaymentStatusParams)
+      body: JSON.stringify(params)
     });
     
     if (!response.ok) {
@@ -184,6 +196,239 @@ const CheckoutForm = ({
   );
 };
 
+// Cash Payment Component
+const CashPaymentForm = ({ 
+  amount, 
+  billingId,
+  onSuccess,
+  onClose,
+  onValidation
+}: {
+  amount: number;
+  billingId: string;
+  onSuccess: () => void;
+  onClose: () => void;
+  onValidation: () => boolean;
+}) => {
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [cashReceived, setCashReceived] = useState(amount);
+  const [changeDue, setChangeDue] = useState(0);
+
+  useEffect(() => {
+    const change = cashReceived - amount;
+    setChangeDue(change > 0 ? change : 0);
+  }, [cashReceived, amount]);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    // Validate amount before proceeding
+    if (!onValidation()) {
+      return;
+    }
+
+    if (cashReceived < amount) {
+      setError(`Cash received ($${cashReceived.toFixed(2)}) is less than amount due ($${amount.toFixed(2)})`);
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
+
+    try {
+      // Generate a transaction ID for cash payment
+      const paymentIntentId = `CASH-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+      
+      await updateBackendPaymentStatus({
+        amount,
+        method: 'cash',
+        paymentIntentId
+      });
+      
+      onSuccess();
+      onClose();
+    } catch (err) {
+      console.error('Cash payment error:', err);
+      setError(err instanceof Error ? err.message : 'Cash payment failed');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Update backend payment status
+  const updateBackendPaymentStatus = async (params: UpdateBackendPaymentStatusParams): Promise<void> => {
+    const response: Response = await authFetch(`${API_URL}/v1/payments/verify-payment`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(params)
+    });
+    
+    if (!response.ok) {
+      throw new Error('Payment verification failed');
+    }
+  };
+
+  return (
+    <form onSubmit={handleSubmit} className="space-y-4">
+      <div className="bg-slate-700/20 p-3 rounded-lg">
+        <div className="flex justify-between text-sm mb-2">
+          <span className="text-slate-400">Amount Due:</span>
+          <span className="text-white font-medium">${amount.toFixed(2)}</span>
+        </div>
+        <div className="flex justify-between text-sm">
+          <span className="text-slate-400">Change Due:</span>
+          <span className="text-green-400 font-medium">${changeDue.toFixed(2)}</span>
+        </div>
+      </div>
+
+      <div className="space-y-2">
+        <Label htmlFor="cashReceived">Cash Received</Label>
+        <Input
+          id="cashReceived"
+          type="number"
+          value={cashReceived}
+          onChange={(e) => setCashReceived(parseFloat(e.target.value) || 0)}
+          min={amount}
+          step="0.01"
+          className="bg-slate-700 border-slate-600 text-white"
+        />
+      </div>
+      
+      {error && (
+        <Alert variant="destructive" className="bg-red-900/20 border-red-800">
+          <AlertCircle className="h-4 w-4" />
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
+      )}
+      
+      <div className="flex justify-end gap-2">
+        <Button type="button" variant="outline" onClick={onClose} disabled={loading}>
+          Cancel
+        </Button>
+        <Button type="submit" disabled={loading}>
+          {loading ? 'Processing...' : `Confirm Cash Payment`}
+        </Button>
+      </div>
+    </form>
+  );
+};
+
+// Mobile Payment Component (generic for MobilePay, Apple Pay, Google Pay, etc.)
+const MobilePaymentForm = ({ 
+  amount, 
+  billingId,
+  method,
+  onSuccess,
+  onClose,
+  onValidation
+}: {
+  amount: number;
+  billingId: string;
+  method: PaymentMethod;
+  onSuccess: () => void;
+  onClose: () => void;
+  onValidation: () => boolean;
+}) => {
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [transactionId, setTransactionId] = useState('');
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    // Validate amount before proceeding
+    if (!onValidation()) {
+      return;
+    }
+
+    if (!transactionId.trim()) {
+      setError('Please enter a transaction ID');
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
+
+    try {
+      await updateBackendPaymentStatus({
+        amount,
+        method,
+        transactionId
+      });
+      
+      onSuccess();
+      onClose();
+    } catch (err) {
+      console.error('Mobile payment error:', err);
+      setError(err instanceof Error ? err.message : `${method} payment failed`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Update backend payment status
+  const updateBackendPaymentStatus = async (params: UpdateBackendPaymentStatusParams): Promise<void> => {
+    const response: Response = await authFetch(`${API_URL}/v1/payments/verify-payment`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(params)
+    });
+    
+    if (!response.ok) {
+      throw new Error('Payment verification failed');
+    }
+  };
+
+  const getMethodName = () => {
+    switch (method) {
+      case 'mobilepay': return 'MobilePay';
+      case 'applepay': return 'Apple Pay';
+      case 'googlepay': return 'Google Pay';
+      case 'bank_transfer': return 'Bank Transfer';
+      default: return method;
+    }
+  };
+
+  return (
+    <form onSubmit={handleSubmit} className="space-y-4">
+      <div className="bg-slate-700/20 p-3 rounded-lg">
+        <div className="flex justify-between text-sm">
+          <span className="text-slate-400">Paying with {getMethodName()}:</span>
+          <span className="text-green-400 font-medium">${amount.toFixed(2)}</span>
+        </div>
+      </div>
+
+      <div className="space-y-2">
+        <Label htmlFor="transactionId">{getMethodName()} Transaction ID</Label>
+        <Input
+          id="transactionId"
+          value={transactionId}
+          onChange={(e) => setTransactionId(e.target.value)}
+          placeholder={`Enter ${getMethodName()} transaction ID`}
+          className="bg-slate-700 border-slate-600 text-white"
+        />
+      </div>
+      
+      {error && (
+        <Alert variant="destructive" className="bg-red-900/20 border-red-800">
+          <AlertCircle className="h-4 w-4" />
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
+      )}
+      
+      <div className="flex justify-end gap-2">
+        <Button type="button" variant="outline" onClick={onClose} disabled={loading}>
+          Cancel
+        </Button>
+        <Button type="submit" disabled={loading}>
+          {loading ? 'Processing...' : `Confirm ${getMethodName()} Payment`}
+        </Button>
+      </div>
+    </form>
+  );
+};
+
 export function PaymentProcessor() {
   const [billings, setBillings] = useState<Billing[]>([]);
   const [payments, setPayments] = useState<Payment[]>([]);
@@ -194,8 +439,9 @@ export function PaymentProcessor() {
   const [loading, setLoading] = useState({ billings: true, payments: true });
   const [error, setError] = useState<string | null>(null);
   const [paymentDialogOpen, setPaymentDialogOpen] = useState(false);
+  const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<PaymentMethod>('card');
   const [showOutstandingInvoices, setShowOutstandingInvoices] = useState(false);
-console.log('render payment processor', payments)
+
   const fetchData = async () => {
     try {
       setLoading(prev => ({ ...prev, billings: true, payments: true }));
@@ -203,13 +449,11 @@ console.log('render payment processor', payments)
       // Fetch billings with outstanding balances
       const billingsRes = await authFetch(`${API_URL}/v1/financial/unpaid`);
       const billingsData = await billingsRes.json();
-      console.log('fetch bills', billingsData)
       setBillings(billingsData.data);
       
       // Fetch payment history
       const paymentsRes = await authFetch(`${API_URL}/v1/payments`);
       const paymentsData = await paymentsRes.json();
-      console.log("payments", paymentsData);
       setPayments(paymentsData.data);
       
     } catch (err) {
@@ -228,6 +472,7 @@ console.log('render payment processor', payments)
     setPaymentAmount(billing.balanceDue);
     setIsCustomAmount(false);
     setAmountError('');
+    setSelectedPaymentMethod('card');
     setPaymentDialogOpen(true);
   };
 
@@ -292,6 +537,30 @@ console.log('render payment processor', payments)
     setShowOutstandingInvoices(prev => !prev);
   };
 
+  const getPaymentMethodIcon = (method: PaymentMethod) => {
+    switch (method) {
+      case 'card': return <CreditCard className="h-5 w-5" />;
+      case 'cash': return <DollarSign className="h-5 w-5" />;
+      case 'mobilepay': 
+      case 'applepay': 
+      case 'googlepay': return <Smartphone className="h-5 w-5" />;
+      case 'bank_transfer': return <QrCode className="h-5 w-5" />;
+      default: return <CreditCard className="h-5 w-5" />;
+    }
+  };
+
+  const getPaymentMethodName = (method: PaymentMethod) => {
+    switch (method) {
+      case 'card': return 'Credit/Debit Card';
+      case 'cash': return 'Cash';
+      case 'mobilepay': return 'MobilePay';
+      case 'applepay': return 'Apple Pay';
+      case 'googlepay': return 'Google Pay';
+      case 'bank_transfer': return 'Bank Transfer';
+      default: return method;
+    }
+  };
+
   if (loading.billings || loading.payments) {
     return <div className="flex justify-center items-center h-64">Loading...</div>;
   }
@@ -350,35 +619,6 @@ console.log('render payment processor', payments)
               )}
             </div>
           )}
-          {/* <div>
-            <h3 className="text-lg font-semibold text-white mb-4">Outstanding Invoices</h3>
-            {billings.length === 0 ? (
-              <p className="text-slate-400">No outstanding invoices</p>
-            ) : (
-              <div className="space-y-3">
-                {billings.map(billing => (
-                  <div key={billing.id} className="bg-slate-700/30 p-4 rounded-lg">
-                    <div className="flex justify-between items-center">
-                      <div>
-                        <h4 className="font-medium text-white">
-                          {billing.invoiceNumber} - {billing.patient?.name}
-                        </h4>
-                        <p className="text-sm text-slate-400">
-                          Balance Due: ${billing.balanceDue.toFixed(2)}
-                        </p>
-                      </div>
-                      <Button 
-                        size="sm" 
-                        onClick={() => handleNewPayment(billing)}
-                      >
-                        Pay Now
-                      </Button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div> */}
 
           <div>
             <h3 className="text-lg font-semibold text-white mb-4">Payment History</h3>
@@ -390,10 +630,16 @@ console.log('render payment processor', payments)
                   <div key={payment.id} className="bg-slate-700/30 p-4 rounded-lg">
                     <div className="flex justify-between items-start">
                       <div>
-                        <h4 className="font-medium text-white">{payment.paymentId} - {payment.patient.name}</h4>
+                        <h4 className="font-medium text-white">{payment.patientName}</h4>
                         <p className="text-sm text-slate-400">
-                          Invoice: {payment.billing.invoiceNumber} • ${payment.amount.toFixed(2)}
+                          Invoice: {payment.invoiceNumber} • ${payment.amount.toFixed(2)}
                         </p>
+                        <div className="flex items-center gap-1 mt-1">
+                          {getPaymentMethodIcon(payment.method as PaymentMethod)}
+                          <span className="text-xs text-slate-400">
+                            {getPaymentMethodName(payment.method as PaymentMethod)}
+                          </span>
+                        </div>
                       </div>
                       <Badge className={getStatusColor(payment.status)}>
                         {payment.status}
@@ -409,20 +655,19 @@ console.log('render payment processor', payments)
 
       {selectedBilling && (
         <Dialog open={paymentDialogOpen} onOpenChange={setPaymentDialogOpen}>
-          <DialogContent className="sm:max-w-[450px] bg-slate-800 border-slate-700 max-h-[90vh] flex flex-col">
+          <DialogContent className="sm:max-w-[500px] bg-slate-800 border-slate-700 max-h-[90vh] flex flex-col">
             <DialogHeader className="flex-shrink-0">
               <DialogTitle className="text-cyan-400">
                 Pay Invoice #{selectedBilling.invoiceNumber}
               </DialogTitle>
+              <DialogDescription className="text-slate-400">
+                Patient: {selectedBilling.patient?.name}
+              </DialogDescription>
             </DialogHeader>
             
             <div className="flex-1 overflow-y-auto space-y-4 pr-2">
               {/* Billing Summary */}
               <div className="bg-slate-700/30 p-4 rounded-lg">
-                <div className="flex justify-between mb-2">
-                  <span className="text-slate-400">Patient:</span>
-                  <span className="text-white">{selectedBilling.patient?.name}</span>
-                </div>
                 <div className="flex justify-between mb-2">
                   <span className="text-slate-400">Total Due:</span>
                   <span className="text-white">${selectedBilling.balanceDue.toFixed(2)}</span>
@@ -495,24 +740,105 @@ console.log('render payment processor', payments)
                 )}
               </div>
 
-              {/* Stripe Payment Form */}
+              {/* Payment Method Selection */}
               {paymentAmount > 0 && !amountError && (
-                <Elements 
-                  stripe={stripePromise} 
-                  options={{
-                    mode: 'payment',
-                    amount: Math.round(paymentAmount * 100),
-                    currency: 'usd',
-                  }}
-                >
-                  <CheckoutForm 
-                    amount={paymentAmount}
-                    billingId={selectedBilling.id}
-                    onSuccess={handlePaymentSuccess}
-                    onClose={() => setPaymentDialogOpen(false)}
-                    onValidation={validatePaymentAmount}
-                  />
-                </Elements>
+                <div className="space-y-3">
+                  <Label className="text-slate-300">Payment Method</Label>
+                  <Select
+                    value={selectedPaymentMethod}
+                    onValueChange={(value: PaymentMethod) => setSelectedPaymentMethod(value)}
+                  >
+                    <SelectTrigger className="bg-slate-700 border-slate-600 text-white">
+                      <SelectValue placeholder="Select payment method" />
+                    </SelectTrigger>
+                    <SelectContent className="bg-slate-800 border-slate-700 text-white">
+                      <SelectItem value="card">
+                        <div className="flex items-center gap-2">
+                          <CreditCard className="h-4 w-4" />
+                          <span>Credit/Debit Card</span>
+                        </div>
+                      </SelectItem>
+                      <SelectItem value="cash">
+                        <div className="flex items-center gap-2">
+                          <DollarSign className="h-4 w-4" />
+                          <span>Cash</span>
+                        </div>
+                      </SelectItem>
+                      <SelectItem value="mobilepay">
+                        <div className="flex items-center gap-2">
+                          <Smartphone className="h-4 w-4" />
+                          <span>MobilePay</span>
+                        </div>
+                      </SelectItem>
+                      <SelectItem value="applepay">
+                        <div className="flex items-center gap-2">
+                          <Smartphone className="h-4 w-4" />
+                          <span>Apple Pay</span>
+                        </div>
+                      </SelectItem>
+                      <SelectItem value="googlepay">
+                        <div className="flex items-center gap-2">
+                          <Smartphone className="h-4 w-4" />
+                          <span>Google Pay</span>
+                        </div>
+                      </SelectItem>
+                      <SelectItem value="bank_transfer">
+                        <div className="flex items-center gap-2">
+                          <QrCode className="h-4 w-4" />
+                          <span>Bank Transfer</span>
+                        </div>
+                      </SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+
+              {/* Payment Form based on selected method */}
+              {paymentAmount > 0 && !amountError && (
+                <div className="pt-4">
+                  {selectedPaymentMethod === 'card' && (
+                    <Elements 
+                      stripe={stripePromise} 
+                      options={{
+                        mode: 'payment',
+                        amount: Math.round(paymentAmount * 100),
+                        currency: 'usd',
+                      }}
+                    >
+                      <CheckoutForm 
+                        amount={paymentAmount}
+                        billingId={selectedBilling.id}
+                        onSuccess={handlePaymentSuccess}
+                        onClose={() => setPaymentDialogOpen(false)}
+                        onValidation={validatePaymentAmount}
+                      />
+                    </Elements>
+                  )}
+                  
+                  {selectedPaymentMethod === 'cash' && (
+                    <CashPaymentForm 
+                      amount={paymentAmount}
+                      billingId={selectedBilling.id}
+                      onSuccess={handlePaymentSuccess}
+                      onClose={() => setPaymentDialogOpen(false)}
+                      onValidation={validatePaymentAmount}
+                    />
+                  )}
+                  
+                  {(selectedPaymentMethod === 'mobilepay' || 
+                    selectedPaymentMethod === 'applepay' || 
+                    selectedPaymentMethod === 'googlepay' ||
+                    selectedPaymentMethod === 'bank_transfer') && (
+                    <MobilePaymentForm 
+                      amount={paymentAmount}
+                      billingId={selectedBilling.id}
+                      method={selectedPaymentMethod}
+                      onSuccess={handlePaymentSuccess}
+                      onClose={() => setPaymentDialogOpen(false)}
+                      onValidation={validatePaymentAmount}
+                    />
+                  )}
+                </div>
               )}
             </div>
           </DialogContent>
