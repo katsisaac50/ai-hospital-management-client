@@ -36,6 +36,7 @@ import { ThemeSwitcher } from "@/components/theme-switcher"
 import { useTheme } from "@/components/theme-provider"
 import { authFetch } from "@/lib/api"
 import { cn } from "@/lib/utils"
+import useSWR from "swr"
 import {
   LineChart,
   Line,
@@ -57,17 +58,34 @@ interface Stats {
   last7Days: { date: string; count: number }[];
 }
 
+
 export default function Dashboard() {
   const { user } = useAuth()
   const { theme } = useTheme()
   const [showProfile, setShowProfile] = useState(false)
-  const [stats, setStats] = useState<Stats | null>(null);
+  // const [stats, setStats] = useState<Stats | null>(null);
   const [showSimpleStats, setShowSimpleStats] = useState(true);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(false);
+  // const [loading, setLoading] = useState(true);
+  // const [error, setError] = useState(false);
   const maxEmergencies = 10;
   const profileRef = useRef<HTMLDivElement>(null)
-  const token = localStorage.getItem("token");
+   const token = user?.token || localStorage.getItem("token");
+
+   // Fetcher function for SWR
+  const fetcher = async (url: string) => {
+    const res = await authFetch(url)
+    if (!res.ok) throw new Error("Failed to fetch stats")
+    return res.json()
+  }
+
+  const { data: stats, error, isLoading, mutate } = useSWR(
+    API_URL ? `${API_URL}/v1/patients/stats` : null, // don’t run until URL is ready
+    fetcher,
+    {
+      revalidateOnFocus: false,  // no refetch on tab switch
+      dedupingInterval: 60000,   // cache for 1 minute
+    }
+  )
 
   const { total, growth, trend } = stats?.monthlyRevenue || {}
   console.log('API_URL', API_URL)
@@ -186,28 +204,28 @@ const getICUColor = (percent: number) => {
     return () => document.removeEventListener("mousedown", handleClickOutside)
   }, [showProfile])
 
-const fetchStats = async () => {
-  console.log('fetching')
-  try {
-    const res = await authFetch(`${API_URL}/v1/patients/stats`);
-    console.log('res', res)
-    const data = await res.json();
-    setStats(data || []);
-    setError(false);
-  } catch (err) {
-    console.log('l erroring')
-    console.error("Error fetching stats:", err);
-    // setError(true);
-  } finally {
-    setLoading(false);
-  }
-};
+// const fetchStats = async () => {
+//   console.log('fetching')
+//   try {
+//     const res = await authFetch(`${API_URL}/v1/patients/stats`);
+//     console.log('res', res)
+//     const data = await res.json();
+//     setStats(data || []);
+//     setError(false);
+//   } catch (err) {
+//     console.log('l erroring')
+//     console.error("Error fetching stats:", err);
+//     // setError(true);
+//   } finally {
+//     setLoading(false);
+//   }
+// };
 
-useEffect(() => {
-  if (token) {
-    fetchStats();
-  }
-}, [token]);
+// useEffect(() => {
+//   if (token) {
+//     fetchStats();
+//   }
+// }, [token]);
 
   console.log('todken dash', token)
 
@@ -216,7 +234,7 @@ useEffect(() => {
   }
 
   // Improved loading and error states
-if (loading) {
+if (isLoading) {
   return (
     <div className="flex items-center justify-center h-64">
       <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-cyan-500"></div>
@@ -232,7 +250,8 @@ if (error) {
       Failed to load dashboard data. Please try again later.
       <Button 
         variant="outline" 
-        onClick={fetchStats}
+        // onClick={fetchStats}
+        onClick={() => mutate()}
         className="ml-4"
       >
         Retry
@@ -282,7 +301,7 @@ if (!stats) {
           "text-gray-900": theme === "light",
         })}
       >
-        {user.name}
+        {user?.name}
       </span>
     </p>
     <p

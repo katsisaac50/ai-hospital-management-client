@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -21,6 +21,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {PendingPaymentManager} from '@/components/finance/pending-payment-manager';
+import { usePaymentStatusTracker } from '@/hooks/usePaymentStatusTracker';
 import { loadStripe } from "@stripe/stripe-js";
 import { Elements, useStripe, useElements, PaymentElement } from "@stripe/react-stripe-js";
 import { authFetch } from '@/lib/api'
@@ -57,15 +59,79 @@ type Payment = {
   transactionId: string;
 };
 
+type PaymentProvider = 'mpesa' | 'airtel' | 'orange' | 'mtn' | 'mobilepay' | 'applepay' | 'googlepay';
+
+type PaymentStatus = 'pending' | 'completed' | 'failed' | 'processing';
+
+type PaymentRequest = {
+  id: string;
+  billingId: string;
+  amount: number;
+  provider: PaymentProvider;
+  status: PaymentStatus;
+  transactionId?: string;
+  createdAt: Date;
+};
+
 interface UpdateBackendPaymentStatusParams {
   paymentIntentId?: string;
+  billingId?: string;
   amount: number;
   method: string;
   transactionId?: string;
 }
 
 // Payment method types
-type PaymentMethod = 'card' | 'cash' | 'mobilepay' | 'applepay' | 'googlepay' | 'bank_transfer';
+type PaymentMethod = 'card' | 'cash' | 'mobilepay' | 'applepay' | 'googlepay' | 'bank_transfer' | 'mpesa' | 'airtel' | 'orange' | 'mtn';
+
+const usePaymentStatusTracker = (onPaymentUpdate: (payment: PaymentRequest) => void) => {
+  const intervalRef = useRef<NodeJS.Timeout | null>(null);
+  
+  const checkPaymentStatus = async (paymentId: string) => {
+    try {
+      const response = await authFetch(`${API_URL}/v1/payments/status/${paymentId}`);
+      if (response.ok) {
+        const paymentData = await response.json();
+        onPaymentUpdate(paymentData.data);
+        
+        // Stop checking if payment is completed or failed
+        if (['completed', 'failed'].includes(paymentData.data.status)) {
+          if (intervalRef.current) {
+            clearInterval(intervalRef.current);
+            intervalRef.current = null;
+          }
+        }
+      }
+    } catch (error) {
+      console.error('Error checking payment status:', error);
+    }
+  };
+
+  const startTracking = (paymentId: string) => {
+    // Check immediately first
+    checkPaymentStatus(paymentId);
+    
+    // Then set up interval for checking every 5 seconds
+    intervalRef.current = setInterval(() => {
+      checkPaymentStatus(paymentId);
+    }, 5000);
+  };
+
+  const stopTracking = () => {
+    if (intervalRef.current) {
+      clearInterval(intervalRef.current);
+      intervalRef.current = null;
+    }
+  };
+
+  useEffect(() => {
+    return () => {
+      stopTracking();
+    };
+  }, []);
+
+  return { startTracking, stopTracking };
+};
 
 const CheckoutForm = ({ 
   amount, 
@@ -107,7 +173,7 @@ const CheckoutForm = ({
         throw submitError;
       }
 
-      const response = await authFetch(`${API_URL}/v1/financial/bills/${billingId}/payments/intent`, {
+      const response = await authFetch(`${API_URL}/v1/payments/${billingId}/payments/intent`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ amount })
@@ -202,11 +268,11 @@ const CashPaymentForm = ({
   billingId,
   onSuccess,
   onClose,
-  onValidation
+  onValidation,
 }: {
   amount: number;
   billingId: string;
-  onSuccess: () => void;
+  onSuccess: (successData: any) => void;
   onClose: () => void;
   onValidation: () => boolean;
 }) => {
@@ -238,15 +304,23 @@ const CashPaymentForm = ({
 
     try {
       // Generate a transaction ID for cash payment
-      const paymentIntentId = `CASH-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+      const transactionId = `CASH-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
       
-      await updateBackendPaymentStatus({
+      const result= await updateBackendPaymentStatus({
         amount,
+        billingId, 
         method: 'cash',
-        paymentIntentId
+        transactionId
       });
+
+      console.log('results', result)
+
+       // Notify parent component about payment creation if callback provided
+      // if (onPaymentCreation && result.data) {
+      //   onPaymentCreation(result.data);
+      // }
       
-      onSuccess();
+      onSuccess(result.data);
       onClose();
     } catch (err) {
       console.error('Cash payment error:', err);
@@ -258,6 +332,7 @@ const CashPaymentForm = ({
 
   // Update backend payment status
   const updateBackendPaymentStatus = async (params: UpdateBackendPaymentStatusParams): Promise<void> => {
+    try {
     const response: Response = await authFetch(`${API_URL}/v1/payments/verify-payment`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -267,6 +342,12 @@ const CashPaymentForm = ({
     if (!response.ok) {
       throw new Error('Payment verification failed');
     }
+    const data = await response.json();
+    return data; 
+    } catch (error) {
+    console.error('Payment processing error:', error);
+    throw error; // Re-throw to handle in the calling function
+  }
   };
 
   return (
@@ -314,36 +395,43 @@ const CashPaymentForm = ({
   );
 };
 
-// Mobile Payment Component (generic for MobilePay, Apple Pay, Google Pay, etc.)
-const MobilePaymentForm = ({ 
+// MobilePay Payment Component
+const MobilePayPaymentForm = ({ 
   amount, 
   billingId,
-  method,
   onSuccess,
   onClose,
   onValidation
 }: {
   amount: number;
   billingId: string;
-  method: PaymentMethod;
   onSuccess: () => void;
   onClose: () => void;
   onValidation: () => boolean;
 }) => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [transactionId, setTransactionId] = useState('');
+  const [phoneNumber, setPhoneNumber] = useState('');
+  const [paymentRequest, setPaymentRequest] = useState<PaymentRequest | null>(null);
+  
+  const { startTracking } = usePaymentStatusTracker((updatedPayment) => {
+    if (updatedPayment.status === 'completed') {
+      onSuccess();
+    } else if (updatedPayment.status === 'failed') {
+      setError('MobilePay payment failed. Please try again.');
+      setLoading(false);
+    }
+  });
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    // Validate amount before proceeding
     if (!onValidation()) {
       return;
     }
 
-    if (!transactionId.trim()) {
-      setError('Please enter a transaction ID');
+    if (!phoneNumber) {
+      setError('Phone number is required for MobilePay');
       return;
     }
 
@@ -351,42 +439,37 @@ const MobilePaymentForm = ({
     setError(null);
 
     try {
-      await updateBackendPaymentStatus({
-        amount,
-        method,
-        transactionId
+      const response = await authFetch(`${API_URL}/v1/payments/mobilepay/initiate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          billingId, 
+          amount,
+          phoneNumber 
+        })
       });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to initiate MobilePay payment');
+      }
+
+      const result = await response.json();
+      setPaymentRequest(result.data);
       
-      onSuccess();
-      onClose();
+      // Start tracking payment status
+      if (result.data.id) {
+        startTracking(result.data.id);
+      }
+      
+      // For MobilePay, we might redirect or show instructions
+      if (result.data.redirectUrl) {
+        window.location.href = result.data.redirectUrl;
+      }
+      
     } catch (err) {
-      console.error('Mobile payment error:', err);
-      setError(err instanceof Error ? err.message : `${method} payment failed`);
-    } finally {
+      setError(err instanceof Error ? err.message : 'MobilePay payment initiation failed');
       setLoading(false);
-    }
-  };
-
-  // Update backend payment status
-  const updateBackendPaymentStatus = async (params: UpdateBackendPaymentStatusParams): Promise<void> => {
-    const response: Response = await authFetch(`${API_URL}/v1/payments/verify-payment`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(params)
-    });
-    
-    if (!response.ok) {
-      throw new Error('Payment verification failed');
-    }
-  };
-
-  const getMethodName = () => {
-    switch (method) {
-      case 'mobilepay': return 'MobilePay';
-      case 'applepay': return 'Apple Pay';
-      case 'googlepay': return 'Google Pay';
-      case 'bank_transfer': return 'Bank Transfer';
-      default: return method;
     }
   };
 
@@ -394,40 +477,372 @@ const MobilePaymentForm = ({
     <form onSubmit={handleSubmit} className="space-y-4">
       <div className="bg-slate-700/20 p-3 rounded-lg">
         <div className="flex justify-between text-sm">
-          <span className="text-slate-400">Paying with {getMethodName()}:</span>
+          <span className="text-slate-400">Paying with MobilePay:</span>
           <span className="text-green-400 font-medium">${amount.toFixed(2)}</span>
         </div>
       </div>
 
-      <div className="space-y-2">
-        <Label htmlFor="transactionId">{getMethodName()} Transaction ID</Label>
-        <Input
-          id="transactionId"
-          value={transactionId}
-          onChange={(e) => setTransactionId(e.target.value)}
-          placeholder={`Enter ${getMethodName()} transaction ID`}
-          className="bg-slate-700 border-slate-600 text-white"
-        />
-      </div>
-      
-      {error && (
-        <Alert variant="destructive" className="bg-red-900/20 border-red-800">
-          <AlertCircle className="h-4 w-4" />
-          <AlertDescription>{error}</AlertDescription>
-        </Alert>
+      {!paymentRequest ? (
+        <>
+          <div className="space-y-2">
+            <Label htmlFor="mobilepay-phone">MobilePay Registered Phone Number</Label>
+            <Input
+              id="mobilepay-phone"
+              type="tel"
+              value={phoneNumber}
+              onChange={(e) => setPhoneNumber(e.target.value)}
+              placeholder="+45 12 34 56 78"
+              className="bg-slate-700 border-slate-600 text-white"
+              required
+            />
+            <p className="text-xs text-slate-400">
+              Enter the phone number registered with your MobilePay account
+            </p>
+          </div>
+          
+          {error && (
+            <Alert variant="destructive" className="bg-red-900/20 border-red-800">
+              <AlertCircle className="h-4 w-4" />
+              <AlertDescription>{error}</AlertDescription>
+            </Alert>
+          )}
+          
+          <div className="flex justify-end gap-2">
+            <Button type="button" variant="outline" onClick={onClose} disabled={loading}>
+              Cancel
+            </Button>
+            <Button type="submit" disabled={loading}>
+              {loading ? 'Initializing...' : `Pay with MobilePay`}
+            </Button>
+          </div>
+        </>
+      ) : (
+        <div className="text-center space-y-4">
+          <div className="bg-blue-900/20 p-4 rounded-lg">
+            <p className="text-blue-300">Payment request sent to your MobilePay app</p>
+            <p className="text-sm text-slate-400 mt-2">
+              Please check your MobilePay app to complete the payment
+            </p>
+          </div>
+          <Button type="button" variant="outline" onClick={onClose}>
+            Close
+          </Button>
+        </div>
       )}
-      
-      <div className="flex justify-end gap-2">
-        <Button type="button" variant="outline" onClick={onClose} disabled={loading}>
-          Cancel
-        </Button>
-        <Button type="submit" disabled={loading}>
-          {loading ? 'Processing...' : `Confirm ${getMethodName()} Payment`}
-        </Button>
-      </div>
     </form>
   );
 };
+
+
+// Mobile Money Payment Component
+const MobileMoneyPaymentForm = ({ 
+  amount, 
+  billingId,
+  onSuccess,
+  onClose,
+  onValidation
+}: {
+  amount: number;
+  billingId: string;
+  onSuccess: () => void;
+  onClose: () => void;
+  onValidation: () => boolean;
+}) => {
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [provider, setProvider] = useState<PaymentProvider>('mpesa');
+  const [phoneNumber, setPhoneNumber] = useState('');
+  const [paymentRequest, setPaymentRequest] = useState<PaymentRequest | null>(null);
+  
+  const { startTracking } = usePaymentStatusTracker((updatedPayment) => {
+    if (updatedPayment.status === 'completed') {
+      onSuccess();
+    } else if (updatedPayment.status === 'failed') {
+      setError('Mobile money payment failed. Please try again.');
+      setLoading(false);
+    }
+  });
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    if (!onValidation()) {
+      return;
+    }
+
+    if (!phoneNumber) {
+      setError('Phone number is required');
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
+
+    try {
+      const response = await authFetch(`${API_URL}/v1/payments/mobilemoney/initiate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          billingId, 
+          amount,
+          provider,
+          phoneNumber 
+        })
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to initiate mobile money payment');
+      }
+
+      const result = await response.json();
+      setPaymentRequest(result.data);
+      
+      // Start tracking payment status
+      if (result.data.id) {
+        startTracking(result.data.id);
+      }
+      
+      // For some providers, we might need to show instructions
+      if (result.data.customerMessage) {
+        // Show message to user
+      }
+      
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Mobile money payment initiation failed');
+      setLoading(false);
+    }
+  };
+
+  const getProviderName = (provider: PaymentProvider) => {
+    switch (provider) {
+      case 'mpesa': return 'M-Pesa';
+      case 'airtel': return 'Airtel Money';
+      case 'orange': return 'Orange Money';
+      case 'mtn': return 'MTN Mobile Money';
+      default: return provider;
+    }
+  };
+
+  return (
+    <form onSubmit={handleSubmit} className="space-y-4">
+      <div className="bg-slate-700/20 p-3 rounded-lg">
+        <div className="flex justify-between text-sm">
+          <span className="text-slate-400">Paying with Mobile Money:</span>
+          <span className="text-green-400 font-medium">${amount.toFixed(2)}</span>
+        </div>
+      </div>
+
+      {!paymentRequest ? (
+        <>
+          <div className="space-y-2">
+            <Label htmlFor="mobilemoney-provider">Mobile Money Provider</Label>
+            <Select value={provider} onValueChange={(value: PaymentProvider) => setProvider(value)}>
+              <SelectTrigger className="bg-slate-700 border-slate-600 text-white">
+                <SelectValue placeholder="Select provider" />
+              </SelectTrigger>
+              <SelectContent className="bg-slate-800 border-slate-700 text-white">
+                <SelectItem value="mpesa">M-Pesa (Kenya)</SelectItem>
+                <SelectItem value="airtel">Airtel Money (Africa)</SelectItem>
+                <SelectItem value="orange">Orange Money (Africa/France)</SelectItem>
+                <SelectItem value="mtn">MTN Mobile Money (Africa)</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="mobilemoney-phone">Phone Number</Label>
+            <Input
+              id="mobilemoney-phone"
+              type="tel"
+              value={phoneNumber}
+              onChange={(e) => setPhoneNumber(e.target.value)}
+              placeholder="e.g., 0712 345 678"
+              className="bg-slate-700 border-slate-600 text-white"
+              required
+            />
+            <p className="text-xs text-slate-400">
+              Enter your mobile money registered phone number
+            </p>
+          </div>
+          
+          {error && (
+            <Alert variant="destructive" className="bg-red-900/20 border-red-800">
+              <AlertCircle className="h-4 w-4" />
+              <AlertDescription>{error}</AlertDescription>
+            </Alert>
+          )}
+          
+          <div className="flex justify-end gap-2">
+            <Button type="button" variant="outline" onClick={onClose} disabled={loading}>
+              Cancel
+            </Button>
+            <Button type="submit" disabled={loading}>
+              {loading ? 'Processing...' : `Pay with ${getProviderName(provider)}`}
+            </Button>
+          </div>
+        </>
+      ) : (
+        <div className="text-center space-y-4">
+          <div className="bg-blue-900/20 p-4 rounded-lg">
+            <p className="text-blue-300">Payment request sent to your phone</p>
+            <p className="text-sm text-slate-400 mt-2">
+              Please check your phone and confirm the payment request
+            </p>
+          </div>
+          <Button type="button" variant="outline" onClick={onClose}>
+            Close
+          </Button>
+        </div>
+      )}
+    </form>
+  );
+};
+
+// Apple Pay Payment Component
+const ApplePayPaymentForm = ({ 
+  amount, 
+  billingId,
+  onSuccess,
+  onClose,
+  onValidation
+}: {
+  amount: number;
+  billingId: string;
+  onSuccess: () => void;
+  onClose: () => void;
+  onValidation: () => boolean;
+}) => {
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [isApplePayAvailable, setIsApplePayAvailable] = useState(false);
+
+  useEffect(() => {
+    // Check if Apple Pay is available
+    if (window.ApplePaySession && ApplePaySession.canMakePayments()) {
+      setIsApplePayAvailable(true);
+    }
+  }, []);
+
+  const handleApplePay = async () => {
+    if (!onValidation()) {
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
+
+    try {
+      // First validate merchant
+      const validationResponse = await authFetch(`${API_URL}/v1/payments/applepay/validate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          validationURL: 'https://apple-pay-gateway.apple.com/paymentservices/paymentSession'
+        })
+      });
+
+      if (!validationResponse.ok) {
+        throw new Error('Apple Pay merchant validation failed');
+      }
+
+      const merchantSession = await validationResponse.json();
+
+      // Create Apple Pay session
+      const paymentRequest = {
+        countryCode: 'US',
+        currencyCode: 'USD',
+        merchantCapabilities: ['supports3DS'],
+        supportedNetworks: ['visa', 'masterCard', 'amex', 'discover'],
+        total: {
+          label: 'Healthcare Payment',
+          amount: amount.toString()
+        }
+      };
+
+      const session = new ApplePaySession(3, paymentRequest);
+      
+      session.onvalidatemerchant = (event) => {
+        session.completeMerchantValidation(merchantSession);
+      };
+
+      session.onpaymentauthorized = async (event) => {
+        try {
+          const response = await authFetch(`${API_URL}/v1/payments/applepay/process`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              billingId,
+              amount,
+              paymentToken: event.payment.token
+            })
+          });
+
+          if (response.ok) {
+            session.completePayment(ApplePaySession.STATUS_SUCCESS);
+            onSuccess();
+          } else {
+            session.completePayment(ApplePaySession.STATUS_FAILURE);
+            throw new Error('Apple Pay payment failed');
+          }
+        } catch (err) {
+          session.completePayment(ApplePaySession.STATUS_FAILURE);
+          setError('Apple Pay payment failed');
+          setLoading(false);
+        }
+      };
+
+      session.begin();
+      
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Apple Pay initialization failed');
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="bg-slate-700/20 p-3 rounded-lg">
+        <div className="flex justify-between text-sm">
+          <span className="text-slate-400">Paying with Apple Pay:</span>
+          <span className="text-green-400 font-medium">${amount.toFixed(2)}</span>
+        </div>
+      </div>
+
+      {!isApplePayAvailable ? (
+        <Alert variant="destructive" className="bg-red-900/20 border-red-800">
+          <AlertCircle className="h-4 w-4" />
+          <AlertDescription>
+            Apple Pay is not available in your browser. Please use Safari on Apple devices.
+          </AlertDescription>
+        </Alert>
+      ) : (
+        <>
+          {error && (
+            <Alert variant="destructive" className="bg-red-900/20 border-red-800">
+              <AlertCircle className="h-4 w-4" />
+              <AlertDescription>{error}</AlertDescription>
+            </Alert>
+          )}
+          
+          <div className="flex justify-end gap-2">
+            <Button type="button" variant="outline" onClick={onClose} disabled={loading}>
+              Cancel
+            </Button>
+            <Button 
+              onClick={handleApplePay} 
+              disabled={loading}
+              className="bg-black text-white hover:bg-gray-800"
+            >
+              {loading ? 'Processing...' : `Pay with Apple Pay`}
+            </Button>
+          </div>
+        </>
+      )}
+    </div>
+  );
+};
+
 
 export function PaymentProcessor() {
   const [billings, setBillings] = useState<Billing[]>([]);
@@ -441,6 +856,8 @@ export function PaymentProcessor() {
   const [paymentDialogOpen, setPaymentDialogOpen] = useState(false);
   const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<PaymentMethod>('card');
   const [showOutstandingInvoices, setShowOutstandingInvoices] = useState(false);
+  const [pendingPaymentId, setPendingPaymentId] = useState<string | null>(null);
+  const [showPendingPaymentModal, setShowPendingPaymentModal] = useState(false);
 
   const fetchData = async () => {
     try {
@@ -482,6 +899,8 @@ export function PaymentProcessor() {
     setPaymentAmount(0);
     setIsCustomAmount(false);
     setAmountError('');
+    setShowPendingPaymentModal(false);
+    setPendingPaymentId(null);
   };
 
   const handleAmountChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -509,6 +928,37 @@ export function PaymentProcessor() {
       setPaymentAmount(selectedBilling.balanceDue);
     }
   };
+
+  const handlePaymentCreation = (paymentData: any) => {
+    console.log('paymentData', paymentData)
+    if (paymentData.paymentId) {
+      setPendingPaymentId(paymentData.paymentId);
+      setShowPendingPaymentModal(true);
+    }
+  };
+
+  const handlePaymentFailed = (payment: PaymentRequest) => {
+    // Handle failed payment (show message, etc.)
+    console.log('Payment failed:', payment);
+    setShowPendingPaymentModal(false);
+    setPendingPaymentId(null);
+  };
+
+  const handleRetryPayment = () => {
+    // Refresh the pending payment modal
+    setShowPendingPaymentModal(true);
+  };
+
+  const paymentStatusTracker = usePaymentStatusTracker((updatedPayment) => {
+  // This callback will be called with updated payment data
+  console.log('Payment status updated:', updatedPayment);
+  
+  if (updatedPayment.status === 'completed') {
+    handlePaymentSuccess();
+  } else if (updatedPayment.status === 'failed') {
+    handlePaymentFailed(updatedPayment);
+  }
+});
 
   const validateAmount = (amount: number) => {
     if (!selectedBilling) return false;
@@ -652,6 +1102,28 @@ export function PaymentProcessor() {
           </div>
         </CardContent>
       </Card>
+
+      {/* Pending Payment Modal */}
+      <Dialog open={showPendingPaymentModal} onOpenChange={setShowPendingPaymentModal}>
+        <DialogContent className="sm:max-w-[500px] bg-slate-800 border-slate-700">
+          <DialogHeader>
+            <DialogTitle className="text-cyan-400">Payment Status</DialogTitle>
+            <DialogDescription className="text-slate-400">
+              Tracking your payment progress
+            </DialogDescription>
+          </DialogHeader>
+          
+          {pendingPaymentId && (
+            <PendingPaymentManager
+              paymentId={pendingPaymentId}
+              onPaymentComplete={handlePaymentSuccess}
+              onPaymentFailed={handlePaymentFailed}
+              onRetry={handleRetryPayment}
+              usePaymentStatusTracker={() => paymentStatusTracker}
+            />
+          )}
+        </DialogContent>
+      </Dialog>
 
       {selectedBilling && (
         <Dialog open={paymentDialogOpen} onOpenChange={setPaymentDialogOpen}>
@@ -811,6 +1283,7 @@ export function PaymentProcessor() {
                         onSuccess={handlePaymentSuccess}
                         onClose={() => setPaymentDialogOpen(false)}
                         onValidation={validatePaymentAmount}
+                        onPaymentCreation={handlePaymentCreation}
                       />
                     </Elements>
                   )}
@@ -825,7 +1298,7 @@ export function PaymentProcessor() {
                     />
                   )}
                   
-                  {(selectedPaymentMethod === 'mobilepay' || 
+                  {/* {(selectedPaymentMethod === 'mobilepay' || 
                     selectedPaymentMethod === 'applepay' || 
                     selectedPaymentMethod === 'googlepay' ||
                     selectedPaymentMethod === 'bank_transfer') && (
@@ -837,7 +1310,42 @@ export function PaymentProcessor() {
                       onClose={() => setPaymentDialogOpen(false)}
                       onValidation={validatePaymentAmount}
                     />
-                  )}
+                  )} */}
+                  {selectedPaymentMethod === 'mobilepay' && (
+  <MobilePayPaymentForm 
+    amount={paymentAmount}
+    billingId={selectedBilling.id}
+    onSuccess={handlePaymentSuccess}
+    onClose={() => setPaymentDialogOpen(false)}
+    onValidation={validatePaymentAmount}
+    onPaymentCreation={handlePaymentCreation}
+  />
+)}
+
+{(selectedPaymentMethod === 'mpesa' || 
+  selectedPaymentMethod === 'airtel' || 
+  selectedPaymentMethod === 'orange' ||
+  selectedPaymentMethod === 'mtn') && (
+  <MobileMoneyPaymentForm 
+    amount={paymentAmount}
+    billingId={selectedBilling.id}
+    onSuccess={handlePaymentSuccess}
+    onClose={() => setPaymentDialogOpen(false)}
+    onValidation={validatePaymentAmount}
+    onPaymentCreation={handlePaymentCreation}
+  />
+)}
+
+{selectedPaymentMethod === 'applepay' && (
+  <ApplePayPaymentForm 
+    amount={paymentAmount}
+    billingId={selectedBilling.id}
+    onSuccess={handlePaymentSuccess}
+    onClose={() => setPaymentDialogOpen(false)}
+    onValidation={validatePaymentAmount}
+    onPaymentCreation={handlePaymentCreation}
+  />
+)}
                 </div>
               )}
             </div>

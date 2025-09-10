@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
-import { Plus, X } from "lucide-react"
+import { Plus, X, FileText, Pill } from "lucide-react"
 import {
   Dialog,
   DialogContent,
@@ -22,6 +22,8 @@ import {
 import { Textarea } from "@/components/ui/textarea"
 import { useToast } from "@/components/ui/use-toast"
 import { authFetch } from '@/lib/api'
+import { Badge } from "@/components/ui/badge"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 
 const API_URL = process.env.NEXT_PUBLIC_API_BASE_URL;
 
@@ -40,8 +42,26 @@ interface Service {
   code: string
 }
 
+interface Prescription {
+  _id: string
+  prescriptionId: string
+  status: string
+  medications: Array<{
+    medication: string
+    name: string
+    dosage: string
+    frequency: string
+    duration: string
+    cost: number
+  }>
+  totalCost: number
+  createdAt: string
+}
+
 interface SelectedService extends Service {
   quantity: number
+  type: 'service' | 'prescription'
+  prescriptionId?: string
 }
 
 export function NewInvoiceModal() {
@@ -50,7 +70,9 @@ export function NewInvoiceModal() {
   const [loading, setLoading] = useState(false)
   const [patients, setPatients] = useState<Patient[]>([])
   const [services, setServices] = useState<Service[]>([])
+  const [prescriptions, setPrescriptions] = useState<Prescription[]>([])
   const [selectedServices, setSelectedServices] = useState<SelectedService[]>([])
+  const [activeTab, setActiveTab] = useState("services")
   const [formData, setFormData] = useState({
     patientId: "",
     date: new Date().toISOString().split('T')[0],
@@ -85,24 +107,95 @@ export function NewInvoiceModal() {
     } finally {
       setLoading(false)
     }
-  }
+  };
 
-  const handlePatientChange = (patientId: string) => {
+  const fetchPatientPrescriptions = async (patientId: string) => {
+    try {
+      setLoading(true)
+      const response = await authFetch(`${API_URL}/v1/pharmacy/prescriptions/patient/${patientId}`)
+      
+      if (response.ok) {
+        const data = await response.json()
+        setPrescriptions(data.data || [])
+      } else {
+        setPrescriptions([])
+      }
+    } catch (error) {
+      console.error("Error fetching prescriptions:", error)
+      setPrescriptions([])
+    } finally {
+      setLoading(false)
+    }
+  };
+  {console.log('prescription', prescriptions)}
+
+  const handlePatientChange = async (patientId: string) => {
     const patient = patients.find(p => p.id === patientId)
     setFormData({ ...formData, patientId, insurance: patient?.insurance || "" })
+    
+    // Fetch prescriptions for this patient
+    if (patientId) {
+      await fetchPatientPrescriptions(patientId)
+    } else {
+      setPrescriptions([])
+    }
   }
 
   const handleServiceChange = (serviceId: string) => {
     const service = services.find(s => s._id === serviceId)
     if (!service) return
-    const exists = selectedServices.find(s => s._id === service._id)
+    
+    const exists = selectedServices.find(s => s._id === service._id && s.type === 'service')
     if (exists) {
       setSelectedServices(selectedServices.map(s =>
         s._id === service._id ? { ...s, quantity: s.quantity + 1 } : s
       ))
     } else {
-      setSelectedServices([...selectedServices, { ...service, quantity: 1 }])
+      setSelectedServices([...selectedServices, { ...service, quantity: 1, type: 'service' }])
     }
+  }
+
+  const handlePrescriptionAdd = (prescription: Prescription) => {
+    // Check if this prescription is already added
+    const exists = selectedServices.find(s => s.prescriptionId === prescription._id)
+    if (exists) {
+      toast({
+        title: "Info",
+        description: "This prescription is already added to the invoice",
+      })
+      return
+    }
+
+    console.log('prescript', prescription)
+     // Get medication names for display
+    const medicationNames = prescription.medications
+      .map(med => med.medication?.name || 'Unknown Medication')
+      .join(', ');
+
+    // Get medication forms for code
+    const medicationForms = prescription.medications
+      .map(med => med.medication?.form || '')
+      .filter(form => form)
+      .join('-');
+
+    // Create a service-like object from the prescription
+    const prescriptionService = {
+      _id: `prescription_${prescription._id}`,
+      id: `prescription_${prescription._id}`,
+      name: `Prescription #${/* prescription?.prescriptionId || */ 'N/A'} - ${medicationNames}`,
+      price: prescription.totalCost,
+      code: `RX-${medicationForms || prescription?.prescriptionId}`,
+      quantity: 1,
+      type: 'prescription' as const,
+      prescriptionId: prescription._id
+    }
+
+    setSelectedServices([...selectedServices, prescriptionService])
+    
+    toast({
+      title: "Added",
+      description: "Prescription added to invoice",
+    })
   }
 
   const removeService = (serviceId: string) => {
@@ -129,7 +222,11 @@ export function NewInvoiceModal() {
     try {
       setLoading(true)
       if (!formData.patientId) throw new Error("Please select a patient")
-      if (selectedServices.length === 0) throw new Error("Please add at least one service")
+      if (selectedServices.length === 0) throw new Error("Please add at least one service or prescription")
+
+        // Find if there's a prescription in the selected services
+    const prescriptionService = selectedServices.find(s => s.type === 'prescription');
+    const prescriptionId = prescriptionService?.prescriptionId || undefined;
 
       const invoiceData = {
         patient: formData.patientId,
@@ -142,12 +239,18 @@ export function NewInvoiceModal() {
         insurance: formData.insurance,  
         subtotal: calculateSubtotal(),
         total: calculateTotal(),
+        prescriptionId: prescriptionId,
         items: selectedServices.map(s => ({
           serviceId: s._id,
           description: s.name,
           quantity: s.quantity,
           unitPrice: s.price,
           amount: s.price * s.quantity,
+          type: s.type,
+          // Add service reference if it's a service (not prescription)
+        ...(s.type === 'service' && { serviceId: s._id }),
+        // Add prescription reference if it's a prescription
+        ...(s.type === 'prescription' && { prescriptionItemId: s.prescriptionId })
         })),
       }
 
@@ -162,6 +265,7 @@ export function NewInvoiceModal() {
       toast({ title: "Success", description: "Invoice created successfully" })
       setFormData({ patientId: "", date: new Date().toISOString().split('T')[0], dueDate: "", insurance: "", notes: "", tax: 0, discount: 0 })
       setSelectedServices([])
+      setPrescriptions([])
       setOpen(false)
     } catch (error) {
       toast({
@@ -182,7 +286,7 @@ export function NewInvoiceModal() {
           New Invoice
         </Button>
       </DialogTrigger>
-      <DialogContent className="sm:max-w-[600px] max-h-[90vh] overflow-y-auto">
+      <DialogContent className="sm:max-w-[700px] max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Create New Invoice</DialogTitle>
         </DialogHeader>
@@ -218,25 +322,93 @@ export function NewInvoiceModal() {
             </div>
           </div>
 
-          {/* Services */}
+          {/* Items Selection Tabs */}
           <div className="space-y-2">
-            <Label>Services *</Label>
-            <Select onValueChange={handleServiceChange} disabled={loading || services.length === 0}>
-              <SelectTrigger><SelectValue placeholder={services.length === 0 ? "No services available" : "Add service"} /></SelectTrigger>
-              <SelectContent>
-                {services.map(s => (
-                  <SelectItem key={s._id} value={s._id}>{s.name} (${s.price})</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <Label>Add Items *</Label>
+            
+            <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+              <TabsList className="grid grid-cols-2 mb-4">
+                <TabsTrigger value="services">Services</TabsTrigger>
+                <TabsTrigger value="prescriptions" disabled={!formData.patientId}>
+                  Prescriptions
+                </TabsTrigger>
+              </TabsList>
+              
+              <TabsContent value="services">
+                <Select onValueChange={handleServiceChange} disabled={loading || services.length === 0}>
+                  <SelectTrigger><SelectValue placeholder={services.length === 0 ? "No services available" : "Add service"} /></SelectTrigger>
+                  <SelectContent>
+                    {services.map(s => (
+                      <SelectItem key={s._id} value={s._id}>{s.name} (${s.price})</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </TabsContent>
+              
+              <TabsContent value="prescriptions">
+                {!formData.patientId ? (
+                  <div className="text-center py-4 text-muted-foreground">
+                    Select a patient to view prescriptions
+                  </div>
+                ) : prescriptions.length === 0 ? (
+                  <div className="text-center py-4 text-muted-foreground">
+                    No prescriptions found for this patient
+                  </div>
+                ) : (
+                  <div className="space-y-2 max-h-40 overflow-y-auto">
+                    {prescriptions.map(prescription => (
+                      <div key={prescription._id} className="flex items-center justify-between p-3 border rounded-md">
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2">
+                            <Pill className="w-4 h-4 text-blue-500" />
+                            {prescription.medications.map(med =>(
+                              <span className="font-medium">RX #{med.medication.name}</span>
+                            ))}
+                            <Badge variant={prescription.status === 'Dispensed' ? 'default' : 'secondary'}>
+                              {prescription.status}
+                            </Badge>
+                          </div>
+                          <div className="text-sm text-muted-foreground mt-1">
+                            {prescription.medications.length} medication(s) • ${prescription.totalCost}
+                          </div>
+                          <div className="text-xs text-muted-foreground">
+                            {new Date(prescription.createdAt).toLocaleDateString()}
+                          </div>
+                        </div>
+                        <Button 
+                          type="button" 
+                          size="sm" 
+                          onClick={() => handlePrescriptionAdd(prescription)}
+                          disabled={prescription.status !== 'Ready'}
+                        >
+                          Add
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </TabsContent>
+            </Tabs>
 
             {selectedServices.length > 0 && (
-              <div className="border rounded-md p-4 space-y-3">
+              <div className="border rounded-md p-4 space-y-3 mt-4">
+                <h4 className="font-medium">Invoice Items</h4>
                 {selectedServices.map(s => (
                   <div key={s._id} className="flex flex-col gap-2 p-2 border rounded">
                     <div className="flex justify-between items-center">
-                      <div><span className="font-medium">{s.name}</span> <span className="text-sm text-muted-foreground ml-2">({s.code})</span></div>
-                      <Button type="button" variant="ghost" size="sm" onClick={() => removeService(s._id)} disabled={loading}><X className="w-4 h-4" /></Button>
+                      <div className="flex items-center gap-2">
+                        <span className="font-medium">{s.name}</span>
+                        {s.type === 'prescription' && (
+                          <Badge variant="outline" className="text-xs">
+                            Form
+                          </Badge>
+                        )}
+                        {console.log('service', s)}
+                        <span className="text-sm text-muted-foreground">({s.code})</span>
+                      </div>
+                      <Button type="button" variant="ghost" size="sm" onClick={() => removeService(s._id)} disabled={loading}>
+                        <X className="w-4 h-4" />
+                      </Button>
                     </div>
                     <div className="flex items-center justify-between">
                       <div className="text-sm">${s.price} each</div>
