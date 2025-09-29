@@ -44,8 +44,8 @@ export function ThemeProvider({
 
   useEffect(() => {
     const stored = localStorage.getItem(storageKey) as Theme
-    if (stored) {
-      setTheme(stored)
+    if (stored && ["light", "dark", "morpho"].includes(stored)) {
+      setTheme(stored as Theme)
     }
   }, [storageKey])
 
@@ -71,3 +71,10 @@ export const useTheme = () => {
 
   return context
 }
+
+
+
+// export function useToggleTheme() {
+//   const { theme, setTheme } = useTheme()
+//   return () => setTheme(theme === "dark" ? "light" : "dark")
+// }

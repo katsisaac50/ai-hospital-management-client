@@ -14,6 +14,7 @@ import { RoleBasedAccess } from "@/components/role-based-access"
 import { useAuth } from "@/lib/auth"
 import { authFetch } from "@/lib/api"
 import { useTheme } from "@/components/theme-provider"
+import { Sun, Moon, Sparkles } from "lucide-react";
 import { cn } from "@/lib/utils"
 import { formatDate } from "@/utils/formatDate";
 import {
@@ -33,10 +34,13 @@ import {
   ArrowLeft, 
   Menu,
   Users,
+  Activity,
 } from "lucide-react"
 import { toast } from "@/hooks/use-toast"
 // import { toast } from "react-toastify";
 import EditPatientDialog from "@/components/patients/editPatientForm"
+import ClinicalEncountersModal from "@/components/modals/ClinicalEncountersModal";
+import { LoginForm } from "@/components/login-form";
 import Link from "next/link"
 
 interface PatientType {
@@ -47,18 +51,28 @@ interface PatientType {
   phone: string
   dateOfBirth: string
   gender: "male" | "female" | "other"
-  addressStreet: string
-  addressCity: string
-  addressPostalCode: string
-  addressCountry: string
-  emergencyContactName: string
-  emergencyContactRelationship: string
-  emergencyPhone: string
+  address: {
+    street: string
+    city: string
+    state?: string
+    postalCode: string
+    country: string
+  }
+  emergencyContact: {
+    name: string
+    relationship: string
+    phone: string
+  }
   insuranceProvider: string
   insuranceNumber: string
-  medicalHistory: string
+  medicalHistory: Array<{
+    _id?: string
+    condition: string
+    diagnosisDate: string
+    treatment: string
+  }>
   diagnosisDate: string
-  allergies: string
+  allergies: string[]
   bloodType: string
   status: "active" | "inactive" | "critical"
   lastVisit: string
@@ -69,75 +83,9 @@ interface PatientType {
   updatedAt: string
 }
 
-
-// const mockPatients: Patient[] = [
-//   {
-//     id: "1",
-//     name: "John Smith",
-//     email: "john.smith@email.com",
-//     phone: "+1 (555) 123-4567",
-//     dateOfBirth: "1985-03-15",
-//     gender: "male",
-//     address: "123 Main St, New York, NY 10001",
-//     emergencyContact: "Jane Smith",
-//     emergencyPhone: "+1 (555) 987-6543",
-//     insuranceProvider: "Blue Cross Blue Shield",
-//     insuranceNumber: "BC123456789",
-//     medicalHistory: "Hypertension, Type 2 Diabetes",
-//     allergies: "Penicillin, Shellfish",
-//     bloodType: "A+",
-//     status: "active",
-//     lastVisit: "2024-01-15",
-//     nextAppointment: "2024-02-01",
-//     createdAt: "2023-01-01",
-//     updatedAt: "2024-01-15",
-//   },
-//   {
-//     id: "2",
-//     name: "Sarah Johnson",
-//     email: "sarah.johnson@email.com",
-//     phone: "+1 (555) 234-5678",
-//     dateOfBirth: "1992-07-22",
-//     gender: "female",
-//     address: "456 Oak Ave, Los Angeles, CA 90210",
-//     emergencyContact: "Mike Johnson",
-//     emergencyPhone: "+1 (555) 876-5432",
-//     insuranceProvider: "Aetna",
-//     insuranceNumber: "AE987654321",
-//     medicalHistory: "Asthma, Seasonal Allergies",
-//     allergies: "Pollen, Dust mites",
-//     bloodType: "O-",
-//     status: "critical",
-//     lastVisit: "2024-01-20",
-//     createdAt: "2023-02-15",
-//     updatedAt: "2024-01-20",
-//   },
-//   {
-//     id: "3",
-//     name: "Michael Brown",
-//     email: "michael.brown@email.com",
-//     phone: "+1 (555) 345-6789",
-//     dateOfBirth: "1978-11-08",
-//     gender: "male",
-//     address: "789 Pine St, Chicago, IL 60601",
-//     emergencyContact: "Lisa Brown",
-//     emergencyPhone: "+1 (555) 765-4321",
-//     insuranceProvider: "Cigna",
-//     insuranceNumber: "CG456789123",
-//     medicalHistory: "Heart Disease, High Cholesterol",
-//     allergies: "None known",
-//     bloodType: "B+",
-//     status: "active",
-//     lastVisit: "2024-01-10",
-//     nextAppointment: "2024-01-25",
-//     createdAt: "2023-03-10",
-//     updatedAt: "2024-01-10",
-//   },
-// ]
-
 export default function PatientsPage() {
   const { user } = useAuth()
-  const { theme } = useTheme()
+  const { theme, setTheme } = useTheme();
   const [patients, setPatients] = useState<PatientType[]>([])
   const [searchTerm, setSearchTerm] = useState("")
   const [filterStatus, setFilterStatus] = useState<string>("all")
@@ -146,7 +94,13 @@ export default function PatientsPage() {
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false)
   const [isViewDialogOpen, setIsViewDialogOpen] = useState(false)
   const [newPatient, setNewPatient] = useState<Partial<PatientType>>({})
-  const token = localStorage.getItem("token");
+  const [encounters, setEncounters] = useState<any[]>([]);
+  const [selectedEncounter, setSelectedEncounter] = useState<any>(null);
+  const [isEncounterModalOpen, setIsEncounterModalOpen] = useState(false);
+  // const [encounters, setEncounters] = useState<any[]>([]);
+  const [loadingEncounters, setLoadingEncounters] = useState(false);
+
+  const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
   const API_URL = process.env.NEXT_PUBLIC_API_BASE_URL;
 
   const cardClasses = cn("transition-all duration-300", {
@@ -164,6 +118,31 @@ export default function PatientsPage() {
     "text-slate-400": theme === "dark" || theme === "morpho",
     "text-gray-600": theme === "light",
   })
+
+  useEffect(() => {
+    const fetchEncounters = async () => {
+  if (isEncounterModalOpen && selectedPatient?.id) {
+
+    const res = await authFetch(`${API_URL}/v1/encounters/patient/${selectedPatient.id}`)
+    const json = await res.json();
+    const data = json?.data || [];
+    console.log('endconters', data)
+    setEncounters(data)
+  }
+}
+fetchEncounters()
+}, [isEncounterModalOpen, selectedPatient]);
+
+useEffect(() => {
+    if (isViewDialogOpen && selectedPatient?.id) {
+      setLoadingEncounters(true);
+      authFetch(`${API_URL}/v1/encounters/patient/${selectedPatient.id}`)
+        .then((res) => res.json())
+        .then((json) => setEncounters(json.data || []))
+        .catch((err) => console.error("Failed to fetch encounters:", err))
+        .finally(() => setLoadingEncounters(false));
+    }
+  }, [isViewDialogOpen, selectedPatient]);
 
   useEffect(() => {
   const fetchPatients = async () => {
@@ -210,6 +189,13 @@ console.log('data', patients)
         return "bg-blue-500/20 text-blue-400 border-blue-500/30"
     }
   }
+
+  const getInputClass = () => cn("transition-colors duration-300", {
+  "glass-input": theme === "morpho",
+  "bg-slate-700/50 border-slate-600 text-white": theme === "dark",
+  "bg-gray-50 border-gray-300": theme === "light",
+});
+
 
   const calculateAge = (dateOfBirth: string) => {
     const today = new Date()
@@ -322,40 +308,6 @@ console.log('data', patients)
   }
 };
 
-
-
-  // const handleAddPatient = () => {
-  //   const patient: Patient = {
-  //     id: Date.now().toString(),
-  //     name: newPatient.name || "",
-  //     email: newPatient.email || "",
-  //     phone: newPatient.phone || "",
-  //     dateOfBirth: newPatient.dateOfBirth || "",
-  //     gender: newPatient.gender || "other",
-  //     address: newPatient.address || "",
-  //     emergencyContact: newPatient.emergencyContact || "",
-  //     emergencyPhone: newPatient.emergencyPhone || "",
-  //     insuranceProvider: newPatient.insuranceProvider || "",
-  //     insuranceNumber: newPatient.insuranceNumber || "",
-  //     medicalHistory: newPatient.medicalHistory || "",
-  //     allergies: newPatient.allergies || "",
-  //     bloodType: newPatient.bloodType || "",
-  //     status: "active",
-  //     lastVisit: new Date().toISOString().split("T")[0],
-  //     createdAt: new Date().toISOString(),
-  //     updatedAt: new Date().toISOString(),
-  //   }
-
-  //   setPatients([...patients, patient])
-  //   setNewPatient({})
-  //   setIsAddDialogOpen(false)
-
-  //   toast({
-  //     title: "Patient Added",
-  //     description: `${patient.name} has been successfully added to the system.`,
-  //   })
-  // }
-
   const handleEditPatient = async () => {
     console.log('sle', selectedPatient)
   if (!selectedPatient?.id) return;
@@ -432,6 +384,9 @@ console.log('sd', updatedPatients)
   }
 };
 
+if (!token) {
+    return <LoginForm />;
+  }
 
   return (
     <div
@@ -484,9 +439,31 @@ console.log('sd', updatedPatients)
         <span>Add Patient</span>
       </Button>
     </RoleBasedAccess>
+    <Button
+      variant="outline"
+      onClick={() => {
+        // cycle through light → dark → morpho
+        const nextTheme =
+          theme === "light" ? "dark" : theme === "dark" ? "morpho" : "light";
+        setTheme(nextTheme);
+      }}
+      className={cn(
+        "flex items-center gap-2 transition-all duration-300",
+        {
+          "glass-button border-white/20 text-white hover:bg-white/10": theme === "morpho",
+          "border-slate-600 text-slate-300 hover:bg-slate-700": theme === "dark",
+          "border-gray-300 text-gray-700 hover:bg-gray-100": theme === "light",
+        }
+      )}
+    >
+      {theme === "light" && <Sun className="w-4 h-4" />}
+      {theme === "dark" && <Moon className="w-4 h-4" />}
+      {theme === "morpho" && <Sparkles className="w-4 h-4" />}
+      <span>Theme: {theme.charAt(0).toUpperCase() + theme.slice(1)}</span>
+    </Button>
 
     {/* Dashboard Link */}
-    <Link href="/" passHlegacyBehavior>
+    <Link href="/" legacyBehavior>
       <Button 
         variant="outline" 
         aria-label="Return to dashboard"
@@ -556,7 +533,11 @@ console.log('sd', updatedPatients)
                 <div className="flex items-start justify-between mb-4">
                   <div className="flex items-center gap-3">
                     <Avatar className="w-12 h-12">
-                      <AvatarImage src={patient.avatar || "/placeholder.svg"} alt={patient.name} />
+                      <AvatarImage 
+                      src={patient.avatar || "/placeholder.svg"} 
+                      alt={patient?.name || "No name"} 
+                      onError={(e) => (e.currentTarget.src = "/placeholder.svg")}
+                      />
                       <AvatarFallback className="bg-gradient-to-r from-cyan-500 to-purple-500 text-white">
                         {(patient?.name || "NN")
                           .split(" ")
@@ -568,8 +549,7 @@ console.log('sd', updatedPatients)
                     <div>
                       <h3 className={cn("font-semibold", textClasses)}>{patient.name}</h3>
                       <p className={cn("text-sm", mutedTextClasses)}>
-                        {console.log(patient)}
-                        Age {calculateAge(patient.dateOfBirth)} • {patient.gender}
+                       Age {calculateAge(patient.dateOfBirth)} • {patient.gender}
                       </p>
                     </div>
                   </div>
@@ -591,12 +571,12 @@ console.log('sd', updatedPatients)
                   </div>
                   <div className="flex items-center gap-2 text-sm">
                     <Calendar className="w-4 h-4 text-purple-400" />
-                    <span className={mutedTextClasses}>Last visit: {formatDate(patient.lastVisit
-, { includeTime: true })}</span>
+                    <span className={mutedTextClasses}>Last visit: {formatDate(patient.lastVisit, { includeTime: true })}</span>
                   </div>
                 </div>
 
                 <div className="flex items-center justify-between">
+                  
                   <Button
                     variant="outline"
                     size="sm"
@@ -612,6 +592,23 @@ console.log('sd', updatedPatients)
                   >
                     <Eye className="w-4 h-4 mr-1" />
                     View
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      setSelectedPatient(patient);
+                      setIsEncounterModalOpen(true);
+                      // You might want to fetch encounters for this patient here
+                    }}
+                    className={cn("transition-colors duration-300", {
+                      "glass-button border-white/20 text-white hover:bg-white/10": theme === "morpho",
+                      "border-slate-600 text-slate-300 hover:bg-slate-700": theme === "dark",
+                      "border-gray-300 text-gray-700 hover:bg-gray-100": theme === "light",
+                    })}
+                  >
+                    <Activity className="w-4 h-4 mr-1" />
+                    Add Encounters
                   </Button>
                   <RoleBasedAccess requiredPermission="edit_patients" showError={false}>
                     <div className="flex gap-2">
@@ -1017,8 +1014,7 @@ console.log('sd', updatedPatients)
                       <div className="flex items-center gap-2">
                         <Calendar className="w-4 h-4 text-cyan-400" />
                         <span className={mutedTextClasses}>Last Visit:</span>
-                        <span className={textClasses}>{formatDate(selectedPatient?.lastVisit
-, { includeTime: true })}</span>
+                        <span className={textClasses}>{formatDate(selectedPatient?.lastVisit, { includeTime: true })}</span>
                       </div>
                       {selectedPatient.nextAppointment && (
                         <div className="flex items-center gap-2">
@@ -1028,6 +1024,52 @@ console.log('sd', updatedPatients)
                         </div>
                       )}
                     </div>
+                  </div>
+                  <div className="space-y-4 md:col-span-2">
+                    <h3 className={cn("text-lg font-semibold", textClasses)}>Clinical Encounters</h3>
+
+                    {loadingEncounters ? (
+                      <p className={cn("italic", mutedTextClasses)}>Loading encounters…</p>
+                    ) : encounters.length === 0 ? (
+                      <p className={cn("italic", mutedTextClasses)}>No clinical encounters recorded.</p>
+                    ) : (
+                      <div className="border rounded-md divide-y divide-gray-200 dark:divide-slate-700">
+                        {encounters.map((enc) => (
+                          <div key={enc?._id} className="p-4 space-y-1">
+                            <div className="flex justify-between items-center">
+                              <span className={cn("font-semibold", textClasses)}>
+                                {new Date(enc.createdAt).toLocaleString()}
+                              </span>
+                              <span className={cn("text-sm", mutedTextClasses)}>
+                                {enc.diagnosis?.map((d: any) => d.condition).join(", ") || "No diagnosis"}
+                              </span>
+                            </div>
+                            {enc?.chiefComplaints && enc.chiefComplaints?.length > 0 && (
+                              <p className={cn("text-sm", textClasses)}>
+                                <strong>Chief Complaints:</strong> {enc.chiefComplaints.join(", ")}
+                              </p>
+                            )}
+                            {enc?.prescription && enc.prescription.medications?.length > 0 && (
+                              <p className={cn("text-sm", textClasses)}>
+                                <strong>Prescription:</strong>{" "}
+                                {enc.prescription?.medications
+                                  .map(
+                                    (m: any) =>
+                                      `${m.medication?.name || "Unnamed"} (${m.dosage}, ${m.frequency}, ${m.duration})`
+                                  )
+                                  .join("; ")}
+                              </p>
+                            )}
+                            {enc.followUp?.date && (
+                              <p className={cn("text-sm", textClasses)}>
+                                <strong>Follow-up:</strong>{" "}
+                                {new Date(enc.followUp.date).toLocaleDateString()} – {enc.followUp.instructions}
+                              </p>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 </div>
               </>
@@ -1046,126 +1088,23 @@ console.log('sd', updatedPatients)
           textClasses={textClasses}
         />
 
-        {/* <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
-          <DialogContent
-            className={cn("max-w-2xl max-h-[90vh] overflow-y-auto", {
-              "glass-card": theme === "morpho",
-              "bg-slate-800 border-slate-700": theme === "dark",
-              "bg-white border-gray-200": theme === "light",
-            })}
+        {selectedPatient && (
+          <ClinicalEncountersModal
+            patientId={selectedPatient.id}
+            userRole={
+              user?.role === "doctor" || user?.role === "nurse" || user?.role === "admin"
+                ? user.role
+                : "doctor"
+            }
+            encounters={encounters}
+            encounter= {selectedEncounter}
+            setEncounters={setEncounters}
+            isOpen={isEncounterModalOpen}
+            setIsOpen={setIsEncounterModalOpen}
           >
-            {selectedPatient && (
-              <>
-                <DialogHeader>
-                  <DialogTitle className={textClasses}>Edit Patient Information</DialogTitle>
-                </DialogHeader>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label className={textClasses}>Full Name</Label>
-                    <Input
-                      value={selectedPatient.name}
-                      onChange={(e) => setSelectedPatient({ ...selectedPatient, name: e.target.value })}
-                      className={cn("transition-colors duration-300", {
-                        "glass-input": theme === "morpho",
-                        "bg-slate-700/50 border-slate-600 text-white": theme === "dark",
-                        "bg-gray-50 border-gray-300": theme === "light",
-                      })}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label className={textClasses}>Email</Label>
-                    <Input
-                      type="email"
-                      value={selectedPatient.email}
-                      onChange={(e) => setSelectedPatient({ ...selectedPatient, email: e.target.value })}
-                      className={cn("transition-colors duration-300", {
-                        "glass-input": theme === "morpho",
-                        "bg-slate-700/50 border-slate-600 text-white": theme === "dark",
-                        "bg-gray-50 border-gray-300": theme === "light",
-                      })}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label className={textClasses}>Phone</Label>
-                    <Input
-                      value={selectedPatient.phone}
-                      onChange={(e) => setSelectedPatient({ ...selectedPatient, phone: e.target.value })}
-                      className={cn("transition-colors duration-300", {
-                        "glass-input": theme === "morpho",
-                        "bg-slate-700/50 border-slate-600 text-white": theme === "dark",
-                        "bg-gray-50 border-gray-300": theme === "light",
-                      })}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label className={textClasses}>Status</Label>
-                    <Select
-                      value={selectedPatient.status}
-                      onValueChange={(value) => setSelectedPatient({ ...selectedPatient, status: value as any })}
-                    >
-                      <SelectTrigger
-                        className={cn("transition-colors duration-300", {
-                          "glass-input": theme === "morpho",
-                          "bg-slate-700/50 border-slate-600 text-white": theme === "dark",
-                          "bg-gray-50 border-gray-300": theme === "light",
-                        })}
-                      >
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="active">Active</SelectItem>
-                        <SelectItem value="critical">Critical</SelectItem>
-                        <SelectItem value="inactive">Inactive</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="space-y-2 md:col-span-2">
-                    <Label className={textClasses}>Address</Label>
-                    <Input
-                      value={selectedPatient.address}
-                      onChange={(e) => setSelectedPatient({ ...selectedPatient, address: e.target.value })}
-                      className={cn("transition-colors duration-300", {
-                        "glass-input": theme === "morpho",
-                        "bg-slate-700/50 border-slate-600 text-white": theme === "dark",
-                        "bg-gray-50 border-gray-300": theme === "light",
-                      })}
-                    />
-                  </div>
-                  <div className="space-y-2 md:col-span-2">
-                    <Label className={textClasses}>Medical History</Label>
-                    <Textarea
-                      value={selectedPatient.medicalHistory}
-                      onChange={(e) => setSelectedPatient({ ...selectedPatient, medicalHistory: e.target.value })}
-                      className={cn("transition-colors duration-300", {
-                        "glass-input": theme === "morpho",
-                        "bg-slate-700/50 border-slate-600 text-white": theme === "dark",
-                        "bg-gray-50 border-gray-300": theme === "light",
-                      })}
-                    />
-                  </div>
-                  <div className="space-y-2 md:col-span-2">
-                    <Label className={textClasses}>Allergies</Label>
-                    <Textarea
-                      value={selectedPatient.allergies}
-                      onChange={(e) => setSelectedPatient({ ...selectedPatient, allergies: e.target.value })}
-                      className={cn("transition-colors duration-300", {
-                        "glass-input": theme === "morpho",
-                        "bg-slate-700/50 border-slate-600 text-white": theme === "dark",
-                        "bg-gray-50 border-gray-300": theme === "light",
-                      })}
-                    />
-                  </div>
-                </div>
-                <div className="flex justify-end gap-4 mt-6">
-                  <Button variant="outline" onClick={() => setIsEditDialogOpen(false)}>
-                    Cancel
-                  </Button>
-                  <Button onClick={handleEditPatient}>Save Changes</Button>
-                </div>
-              </>
-            )}
-          </DialogContent>
-        </Dialog> */}
+           {/*  <span className="text-blue-500 cursor-pointer underline">Open Encounter Form</span> */}
+          </ClinicalEncountersModal>
+        )}
 
         {/* Empty State */}
         {filteredPatients.length === 0 && (
