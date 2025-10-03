@@ -101,25 +101,45 @@ export default function PharmacyPage() {
 
 function PharmacyOverview() {
   const [recentActivities, setRecentActivities] = useState([])
-  // const [loading, setLoading] = useState(true)
+  const [loading, setLoading] = useState(false);
 
-  useEffect(() => {
-    const fetchActivities = async () => {
-      try {
-        const res = await authFetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/v1/pharmacy/activities`)
-        if (!res.ok) throw new Error("Failed to fetch activities")
-        const data = await res.json()
-      console.log('data', data)
-        setRecentActivities(data)
-      } catch (err) {
-        console.error("Failed to load activities", err)
-      } finally {
-        setLoading(false)
-      }
+   // 🔹 Modal states
+  const [isPrescriptionModalOpen, setPrescriptionModalOpen] = useState(false)
+  const [isModalOpen, setModalOpen] = useState(false);
+  const openModal = () => setModalOpen(true);
+  const closeModal = () => setModalOpen(false);
+  const [isMedicationModalOpen, setMedicationModalOpen] = useState(false);
+  const [modalOpen, setOpenModal] = useState(false)
+  const [isStockOrderModalOpen, setStockOrderModalOpen] = useState(false);
+  const [isDrugInteractionModalOpen, setDrugInteractionModalOpen] = useState(false);
+ 
+
+
+  // 🔹 Fetch activities function (reusable)
+  const fetchActivities = async () => {
+    setLoading(true)
+    try {
+      const res = await authFetch(
+        `${process.env.NEXT_PUBLIC_API_BASE_URL}/v1/pharmacy/activities`,
+        { cache: "no-store" }
+      )
+      if (!res.ok) throw new Error("Failed to fetch activities")
+      const data = await res.json()
+      setRecentActivities(data)
+    } catch (err) {
+      console.error("Failed to load activities", err)
+    } finally {
+      setLoading(false)
     }
+  }
 
+   useEffect(() => {
     fetchActivities()
   }, [])
+
+
+
+
   // const recentActivities = [
   //   {
   //     id: 1,
@@ -180,29 +200,39 @@ function PharmacyOverview() {
         return "text-slate-400"
     }
   }
-  const [openPrescriptionModal, setOpenPrescriptionModal] = useState(false)
-  const [isModalOpen, setModalOpen] = useState(false);
-  const openModal = () => setModalOpen(true);
-  const closeModal = () => setModalOpen(false);
-  const [modalOpen, setOpenModal] = useState(false)
-  const [showStockOrderModal, setShowStockOrderModal] = useState(false);
-  const [loading, setLoading] = useState(false);
+  
+  interface MedicationData {
+    name: string
+    dosage: string
+    [key: string]: any // Add more fields as needed
+  }
 
-  const handleSave = async (data) => {
+  interface SaveMedicationResponse {
+    success: boolean
+    error?: string
+    data?: {
+      name: string
+      [key: string]: any
+    }
+  }
+
+  const handleSave = async (data: MedicationData): Promise<void> => {
     try {
       const res = await authFetch(`${API_URL}/v1/pharmacy/medications`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(data),
-          })
- 
-      const updated = await res.json()
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+      })
+
+      const updated: SaveMedicationResponse = await res.json()
       if (!updated.success) {
         toast(updated.error || "Failed to save medication")
         return
       }
-      toast(`${updated.data.name} saved successfully`)
-      setModalOpen(false)
+      toast(`${updated.data?.name} saved successfully`)
+      setMedicationModalOpen(false)
+      // ⚡ Refresh activities after save
+      await fetchActivities()
     } catch (err) {
       toast(`An error occurred while saving medication: ${err}`)
       console.error("Save Error:", err)
@@ -216,6 +246,7 @@ function PharmacyOverview() {
         <CardHeader>
           <CardTitle className="text-cyan-400">Recent Activities</CardTitle>
         </CardHeader>
+        {console.log('activity', recentActivities)}
         <CardContent className="space-y-4">
           {loading ? (
     <div className="text-slate-400 text-sm">Loading recent activities...</div>
@@ -240,36 +271,36 @@ function PharmacyOverview() {
           <CardTitle className="text-cyan-400">Quick Actions</CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
-          <Button onClick={openModal} className="w-full justify-start bg-gradient-to-r from-cyan-500/20 to-purple-500/20 border border-cyan-500/30 hover:bg-cyan-500/30 transition-colors duration-200 hover:bg-green-500/30 hover:text-white">
+          <Button onClick={() => setMedicationModalOpen(true)} className="w-full justify-start bg-gradient-to-r from-cyan-500/20 to-purple-500/20 border border-cyan-500/30 hover:bg-cyan-500/30 transition-colors duration-200 hover:bg-green-500/30 hover:text-white">
             <Plus className="w-4 h-4 mr-2" />
             Add New Medication
           </Button>
-          <Button onClick={() => setOpenPrescriptionModal(true)}  type="button" className="w-full justify-start bg-gradient-to-r from-blue-500/20 to-cyan-500/20 border border-blue-500/30 hover:bg-blue-500/30 transition-colors duration-200 hover:bg-green-500/30 hover:text-white">
+          <Button onClick={() => setPrescriptionModalOpen(true)}  type="button" className="w-full justify-start bg-gradient-to-r from-blue-500/20 to-cyan-500/20 border border-blue-500/30 hover:bg-blue-500/30 transition-colors duration-200 hover:bg-green-500/30 hover:text-white">
             <FileText className="w-4 h-4 mr-2" />
             Process Prescription
           </Button>
-          <Button onClick={() => setShowStockOrderModal(true)}  type="button" className="w-full justify-start bg-gradient-to-r from-purple-500/20 to-pink-500/20 border border-purple-500/30 hover:bg-purple-500/30 transition-colors duration-200 hover:bg-green-500/30 hover:text-white">
+          <Button onClick={() => setStockOrderModalOpen(true)}  type="button" className="w-full justify-start bg-gradient-to-r from-purple-500/20 to-pink-500/20 border border-purple-500/30 hover:bg-purple-500/30 transition-colors duration-200 hover:bg-green-500/30 hover:text-white">
             <ShoppingCart className="w-4 h-4 mr-2" />
             Create Stock Order
           </Button>
           <Button
-            onClick={() => setOpenModal(true)} type="button" className="w-full justify-start bg-gradient-to-r from-green-500/20 to-cyan-500/20 border border-green-500/30 text-green-800 transition-colors duration-200 hover:bg-green-500/30 hover:text-white">
+            onClick={() => setDrugInteractionModalOpen(true)} type="button" className="w-full justify-start bg-gradient-to-r from-green-500/20 to-cyan-500/20 border border-green-500/30 text-green-800 transition-colors duration-200 hover:bg-green-500/30 hover:text-white">
             <Brain className="w-4 h-4 mr-2" />
             Check Drug Interactions
           </Button>
-          <DrugInteractionModal open={modalOpen} onClose={() => setOpenModal(false)} />
+          <DrugInteractionModal open={isDrugInteractionModalOpen} onClose={() => setDrugInteractionModalOpen(false)} />
         </CardContent>
       </Card>
       
-      {/* Add Medication Modal */}
-      {isModalOpen &&<MedicationModal
-  isOpen={isModalOpen}
-  onClose={closeModal}
+{/* Add Medication Modal */}
+{isMedicationModalOpen && <MedicationModal
+  isOpen={isMedicationModalOpen}
+  onClose={() => setMedicationModalOpen(false)}
   onSave={handleSave}
-  // initialData={editingMed}
+  initialData={null}
 />}
-{openPrescriptionModal && <ProcessPrescriptionModal open={openPrescriptionModal} onClose={() => setOpenPrescriptionModal(false)} />}
-  {showStockOrderModal && <CreateStockOrderModal open={showStockOrderModal} onClose={() => setShowStockOrderModal(false)} />}
+{isPrescriptionModalOpen && <ProcessPrescriptionModal open={isPrescriptionModalOpen} onClose={() => setPrescriptionModalOpen(false)} heading="Process Prescription" />}
+  {isStockOrderModalOpen && <CreateStockOrderModal open={isStockOrderModalOpen} onClose={() => setStockOrderModalOpen(false)} />}
     </div>
   )
 }
