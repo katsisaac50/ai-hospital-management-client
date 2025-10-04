@@ -84,6 +84,50 @@ body {
   }
 }
 
+@keyframes badge-glow {
+  0% {
+    filter: brightness(1);
+    transform: scale(1);
+  }
+  50% {
+    filter: brightness(1.4);
+    transform: scale(1.05);
+  }
+  100% {
+    filter: brightness(1);
+    transform: scale(1);
+  }
+}
+
+/* 🌈 Hover/Focus Glow Intensification */
+.badge-hover {
+  transition: all 0.3s ease-in-out;
+}
+
+.badge-hover:hover,
+.badge-hover:focus {
+  filter: brightness(1.6);
+  transform: scale(1.08);
+  box-shadow: 0 0 20px currentColor;
+}
+
+@keyframes badge-glow {
+  0% {
+    filter: brightness(1);
+    transform: scale(1);
+  }
+  50% {
+    filter: brightness(1.4);
+    transform: scale(1.05);
+  }
+  100% {
+    filter: brightness(1);
+    transform: scale(1);
+  }
+}
+
+
+
 @layer base {
   * {
     @apply border-border;
